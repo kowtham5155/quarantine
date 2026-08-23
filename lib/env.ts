@@ -30,6 +30,14 @@ export const envSchema = z.object({
   /** Neon Postgres connection string. */
   DATABASE_URL: postgresUrl,
 
+  /**
+   * Optional unpooled connection string. Neon serves the default DATABASE_URL
+   * through PgBouncer in transaction mode, which cannot run migrations; Prisma
+   * uses this for `migrate` and `db push` only. Same credentials as
+   * DATABASE_URL with `-pooler` removed from the host.
+   */
+  DIRECT_URL: postgresUrl.optional(),
+
   /** Auth.js signing secret. 32 bytes base64 (`openssl rand -base64 32`). */
   AUTH_SECRET: z.string().min(32, 'AUTH_SECRET must be at least 32 characters'),
 

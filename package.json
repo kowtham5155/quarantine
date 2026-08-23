@@ -14,10 +14,13 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "db:migrate": "prisma migrate dev",
-    "db:seed": "prisma db seed",
-    "db:studio": "prisma studio",
-    "format": "prettier --write ."
+    "db:migrate": "dotenv -e .env.local -- prisma migrate dev",
+    "db:seed": "dotenv -e .env.local -- prisma db seed",
+    "db:studio": "dotenv -e .env.local -- prisma studio",
+    "format": "prettier --write .",
+    "db:deploy": "dotenv -e .env.local -- prisma migrate deploy",
+    "db:generate": "prisma generate",
+    "db:reset": "dotenv -e .env.local -- prisma migrate reset"
   },
   "dependencies": {
     "@node-rs/argon2": "2.1.0",
@@ -48,6 +51,7 @@
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
     "@vitejs/plugin-react": "6.1.0",
+    "dotenv-cli": "11.0.0",
     "eslint": "9.39.5",
     "eslint-config-next": "15.5.23",
     "eslint-config-prettier": "10.1.8",
@@ -70,5 +74,8 @@
     "prisma@6.19.3": true,
     "sharp@0.34.5": true,
     "unrs-resolver@1.12.2": true
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   }
 }

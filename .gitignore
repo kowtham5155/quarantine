@@ -27,3 +27,20 @@ next-env.d.ts
 # build loop bookkeeping
 BUILD_LOG.md
 .build-state
+.neon
+QUARANTINE_BUILD_PROMPTS.md
+QUARANTINE_BUILD_PROMPTS.md
+
+# Build tooling — local only
+build.sh
+BUILD_LOG.md
+.build-state
+QUARANTINE_BUILD_PROMPTS.md
+
+# Neon CLI state
+.neon
+
+# Misc
+*.tsbuildinfo
+.vercel
+/tmp

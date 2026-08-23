@@ -1,0 +1,895 @@
+// Quarantine — data layer.
+//
+// Conventions enforced across every model:
+//   * id is a cuid, createdAt / updatedAt on everything.
+//   * Tenant-scoped models carry orgId and index it. Services always filter on
+//     it (CLAUDE.md rules 3 and 4) — the index exists so that is also cheap.
+//   * The package catalogue (Package, PackageVersion, Rule, CorpusEntry) is
+//     deliberately global: two orgs analysing left-pad are looking at the same
+//     tarball, and duplicating it per tenant would make campaign clustering
+//     across the ecosystem impossible. Tenancy lives on Analysis and above.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Ecosystem {
+  NPM
+  PYPI
+}
+
+enum Plan {
+  FREE
+  TEAM
+  ENTERPRISE
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  ANALYST
+  VIEWER
+}
+
+enum VerificationTokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+  TOTP_RECOVERY
+}
+
+enum AnalysisStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  PARTIAL
+}
+
+enum Verdict {
+  CLEAN
+  LOW_RISK
+  SUSPICIOUS
+  LIKELY_MALICIOUS
+  KNOWN_MALICIOUS
+}
+
+enum SignalFamily {
+  INSTALL
+  OBFUSCATION
+  CAPABILITY
+  TYPOSQUAT
+  MAINTAINER
+  PROVENANCE
+}
+
+enum Severity {
+  INFO
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+/// NO_REPO and REPO_UNREACHABLE are distinct from DIVERGENT on purpose:
+/// conflating "we could not check" with "it does not match" is the single
+/// biggest false-positive source in provenance analysis.
+enum ProvenanceStatus {
+  MATCH
+  DIVERGENT
+  NO_REPO
+  REPO_UNREACHABLE
+  NO_TAG
+}
+
+enum MaintainerEventType {
+  ADDED
+  REMOVED
+  PUBLISHED
+}
+
+enum ProjectSource {
+  UPLOAD
+  GITHUB
+}
+
+enum ScanStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum PolicyAction {
+  ALLOW
+  WARN
+  BLOCK
+}
+
+enum ViolationState {
+  OPEN
+  EXCEPTED
+  RESOLVED
+}
+
+enum ExceptionState {
+  PENDING
+  APPROVED
+  DENIED
+  EXPIRED
+}
+
+enum QuarantineState {
+  HELD
+  RELEASED
+  CONFIRMED_BAD
+}
+
+enum IndicatorType {
+  EXFIL_ENDPOINT
+  MAINTAINER
+  CODE_HASH
+  WALLET
+}
+
+enum CorpusLabel {
+  MALICIOUS
+  CLEAN
+}
+
+enum AlertType {
+  MALICIOUS_VERDICT
+  POLICY_VIOLATION
+  QUARANTINE_HELD
+  CAMPAIGN_MATCH
+  PROVENANCE_DIVERGENCE
+  MAINTAINER_CHANGE
+  EXCEPTION_EXPIRING
+}
+
+enum ReportType {
+  ORG_POSTURE
+  PROJECT_RISK
+  SBOM
+  VIOLATIONS
+  EVALUATION
+}
+
+enum ReportFormat {
+  JSON
+  CSV
+  PDF
+  HTML
+}
+
+enum ReportStatus {
+  QUEUED
+  GENERATING
+  READY
+  FAILED
+}
+
+enum NotificationType {
+  ALERT
+  INVITATION
+  EXCEPTION_REQUEST
+  EXCEPTION_DECISION
+  SCAN_COMPLETE
+  REPORT_READY
+}
+
+// ---------------------------------------------------------------------------
+// Tenancy and identity
+// ---------------------------------------------------------------------------
+
+model Organization {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  plan      Plan      @default(FREE)
+  settings  Json      @default("{}")
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  memberships      Membership[]
+  invitations      Invitation[]
+  analyses         Analysis[]
+  projects         Project[]
+  projectScans     ProjectScan[]
+  policies         Policy[]
+  policyViolations PolicyViolation[]
+  exceptions       Exception[]
+  quarantineItems  QuarantineItem[]
+  campaigns        Campaign[]
+  alerts           Alert[]
+  reports          Report[]
+  apiKeys          ApiKey[]
+  webhooks         Webhook[]
+  auditLogs        AuditLog[]
+  notifications    Notification[]
+
+  @@index([deletedAt])
+}
+
+model User {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  passwordHash     String
+  name             String
+  avatarUrl        String?
+  emailVerifiedAt  DateTime?
+  totpSecret       String?
+  totpEnabled      Boolean   @default(false)
+  lastLoginAt      DateTime?
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  memberships         Membership[]
+  sessions            Session[]
+  notifications       Notification[]
+  auditLogs           AuditLog[]
+  createdApiKeys      ApiKey[]         @relation("ApiKeyCreatedBy")
+  generatedReports    Report[]         @relation("ReportGeneratedBy")
+  requestedExceptions Exception[]      @relation("ExceptionRequestedBy")
+  approvedExceptions  Exception[]      @relation("ExceptionApprovedBy")
+  reviewedQuarantine  QuarantineItem[] @relation("QuarantineReviewedBy")
+
+  @@index([lockedUntil])
+}
+
+model Membership {
+  id        String   @id @default(cuid())
+  userId    String
+  orgId     String
+  role      Role     @default(VIEWER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId])
+  @@index([orgId])
+  @@index([userId])
+}
+
+model Invitation {
+  id         String    @id @default(cuid())
+  orgId      String
+  email      String
+  role       Role      @default(VIEWER)
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([email])
+  @@index([expiresAt])
+}
+
+model Session {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  ip        String?
+  userAgent String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model VerificationToken {
+  id         String                @id @default(cuid())
+  identifier String
+  tokenHash  String                @unique
+  type       VerificationTokenType
+  expiresAt  DateTime
+  createdAt  DateTime              @default(now())
+  updatedAt  DateTime              @updatedAt
+
+  @@index([identifier, type])
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------------------
+// Package catalogue (global, not tenant-scoped)
+// ---------------------------------------------------------------------------
+
+model Package {
+  id               String    @id @default(cuid())
+  ecosystem        Ecosystem
+  name             String
+  latestVersion    String?
+  description      String?
+  repositoryUrl    String?
+  weeklyDownloads  Int       @default(0)
+  firstPublishedAt DateTime?
+  maintainerCount  Int       @default(0)
+  isDeprecated     Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  versions         PackageVersion[]
+  maintainerEvents MaintainerEvent[]
+
+  @@unique([ecosystem, name])
+  @@index([weeklyDownloads])
+  @@index([ecosystem])
+}
+
+model PackageVersion {
+  id                 String    @id @default(cuid())
+  packageId          String
+  version            String
+  publishedAt        DateTime?
+  tarballUrl         String?
+  integrity          String?
+  unpackedSize       Int?
+  fileCount          Int?
+  hasInstallScripts  Boolean   @default(false)
+  publisherId        String?
+  provenanceAttested Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  package Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  analyses         Analysis[]
+  dependencies     Dependency[]
+  policyViolations PolicyViolation[]
+  exceptions       Exception[]
+  quarantineItems  QuarantineItem[]
+  campaignMembers  CampaignMember[]
+  alerts           Alert[]
+
+  @@unique([packageId, version])
+  @@index([packageId])
+  @@index([publishedAt])
+  @@index([publisherId])
+}
+
+model Rule {
+  id                 String       @id @default(cuid())
+  ruleId             String       @unique
+  family             SignalFamily
+  name               String
+  description        String
+  severity           Severity
+  baseWeight         Float
+  remediation        String
+  references         String[]     @default([])
+  enabled            Boolean      @default(true)
+  falsePositiveNotes String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@index([family])
+  @@index([enabled])
+}
+
+// ---------------------------------------------------------------------------
+// Analysis
+// ---------------------------------------------------------------------------
+
+model Analysis {
+  id                String         @id @default(cuid())
+  orgId             String
+  packageVersionId  String
+  status            AnalysisStatus @default(QUEUED)
+  verdict           Verdict?
+  confidence        Float?
+  weightedScore     Float?
+  hardTriggersFired String[]       @default([])
+  startedAt         DateTime?
+  completedAt       DateTime?
+  durationMs        Int?
+  engineVersion     String
+  errorMessage      String?
+  signalCounts      Json           @default("{}")
+  filesAnalysed     Int            @default(0)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  org            Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  packageVersion PackageVersion @relation(fields: [packageVersionId], references: [id], onDelete: Cascade)
+
+  signalHits       SignalHit[]
+  provenanceChecks ProvenanceCheck[]
+  typosquatMatches TyposquatMatch[]
+  policyViolations PolicyViolation[]
+
+  @@index([orgId])
+  @@index([orgId, verdict])
+  @@index([orgId, status])
+  @@index([packageVersionId])
+  @@index([completedAt])
+}
+
+model SignalHit {
+  id              String       @id @default(cuid())
+  analysisId      String
+  ruleId          String
+  family          SignalFamily
+  severity        Severity
+  weight          Float
+  confidence      Float
+  filePath        String?
+  lineStart       Int?
+  lineEnd         Int?
+  excerpt         String?
+  evidence        Json         @default("{}")
+  contextModifier Float        @default(1)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  analysis Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@index([analysisId])
+  @@index([ruleId])
+  @@index([family])
+}
+
+model ProvenanceCheck {
+  id                 String           @id @default(cuid())
+  analysisId         String
+  repoUrl            String?
+  gitRef             String?
+  status             ProvenanceStatus
+  filesOnlyInTarball String[]         @default([])
+  filesOnlyInRepo    String[]         @default([])
+  modifiedFiles      String[]         @default([])
+  diffSummary        Json             @default("{}")
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  analysis Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@index([analysisId])
+  @@index([status])
+}
+
+model TyposquatMatch {
+  id              String   @id @default(cuid())
+  analysisId      String
+  targetPackage   String
+  distance        Int
+  technique       String
+  similarity      Float
+  targetDownloads Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  analysis Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@index([analysisId])
+  @@index([targetPackage])
+}
+
+model MaintainerEvent {
+  id         String              @id @default(cuid())
+  packageId  String
+  type       MaintainerEventType
+  actor      String
+  occurredAt DateTime
+  metadata   Json                @default("{}")
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  package Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@index([packageId])
+  @@index([actor])
+  @@index([occurredAt])
+}
+
+// ---------------------------------------------------------------------------
+// Projects
+// ---------------------------------------------------------------------------
+
+model Project {
+  id          String        @id @default(cuid())
+  orgId       String
+  name        String
+  description String?
+  ecosystem   Ecosystem     @default(NPM)
+  source      ProjectSource @default(UPLOAD)
+  repoUrl     String?
+  lastScanAt  DateTime?
+  riskSummary Json          @default("{}")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  dependencies     Dependency[]
+  scans            ProjectScan[]
+  policyViolations PolicyViolation[]
+  alerts           Alert[]
+  reports          Report[]
+
+  @@unique([orgId, name])
+  @@index([orgId])
+}
+
+model Dependency {
+  id               String   @id @default(cuid())
+  projectId        String
+  packageVersionId String
+  isDirect         Boolean  @default(false)
+  depth            Int      @default(0)
+  path             String[] @default([])
+  declaredRange    String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  project        Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  packageVersion PackageVersion @relation(fields: [packageVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, packageVersionId, depth])
+  @@index([projectId])
+  @@index([packageVersionId])
+}
+
+model ProjectScan {
+  id          String     @id @default(cuid())
+  orgId       String
+  projectId   String
+  status      ScanStatus @default(QUEUED)
+  startedAt   DateTime?
+  completedAt DateTime?
+  totalDeps   Int        @default(0)
+  flaggedDeps Int        @default(0)
+  blockedDeps Int        @default(0)
+  summary     Json       @default("{}")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([projectId])
+  @@index([completedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Policy and governance
+// ---------------------------------------------------------------------------
+
+model Policy {
+  id          String       @id @default(cuid())
+  orgId       String
+  name        String
+  description String?
+  enabled     Boolean      @default(true)
+  action      PolicyAction @default(WARN)
+  conditions  Json         @default("{}")
+  priority    Int          @default(100)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  violations PolicyViolation[]
+  exceptions Exception[]
+
+  @@unique([orgId, name])
+  @@index([orgId])
+  @@index([orgId, priority])
+}
+
+model PolicyViolation {
+  id               String         @id @default(cuid())
+  orgId            String
+  policyId         String
+  projectId        String?
+  packageVersionId String
+  analysisId       String?
+  state            ViolationState @default(OPEN)
+  detectedAt       DateTime       @default(now())
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  org            Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  policy         Policy         @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  project        Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  packageVersion PackageVersion @relation(fields: [packageVersionId], references: [id], onDelete: Cascade)
+  analysis       Analysis?      @relation(fields: [analysisId], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+  @@index([orgId, state])
+  @@index([policyId])
+  @@index([projectId])
+  @@index([packageVersionId])
+}
+
+model Exception {
+  id               String         @id @default(cuid())
+  orgId            String
+  packageVersionId String
+  policyId         String?
+  justification    String
+  requestedById    String
+  approvedById     String?
+  expiresAt        DateTime?
+  state            ExceptionState @default(PENDING)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  org            Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  packageVersion PackageVersion @relation(fields: [packageVersionId], references: [id], onDelete: Cascade)
+  policy         Policy?        @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  requestedBy    User           @relation("ExceptionRequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+  approvedBy     User?          @relation("ExceptionApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+  @@index([orgId, state])
+  @@index([packageVersionId])
+  @@index([expiresAt])
+}
+
+model QuarantineItem {
+  id               String          @id @default(cuid())
+  orgId            String
+  packageVersionId String
+  reason           String
+  state            QuarantineState @default(HELD)
+  reviewedById     String?
+  reviewedAt       DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  org            Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  packageVersion PackageVersion @relation(fields: [packageVersionId], references: [id], onDelete: Cascade)
+  reviewedBy     User?          @relation("QuarantineReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@unique([orgId, packageVersionId])
+  @@index([orgId])
+  @@index([orgId, state])
+}
+
+// ---------------------------------------------------------------------------
+// Campaign clustering
+// ---------------------------------------------------------------------------
+
+model Campaign {
+  id             String        @id @default(cuid())
+  /// Null means the campaign is ecosystem-wide rather than owned by one org.
+  orgId          String?
+  name           String
+  description    String?
+  fingerprint    String        @unique
+  indicatorType  IndicatorType
+  indicatorValue String
+  firstSeenAt    DateTime
+  lastSeenAt     DateTime
+  packageCount   Int           @default(0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  org Organization? @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  members CampaignMember[]
+
+  @@index([orgId])
+  @@index([indicatorType, indicatorValue])
+  @@index([lastSeenAt])
+}
+
+model CampaignMember {
+  id               String   @id @default(cuid())
+  campaignId       String
+  packageVersionId String
+  confidence       Float
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  campaign       Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  packageVersion PackageVersion @relation(fields: [packageVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, packageVersionId])
+  @@index([campaignId])
+  @@index([packageVersionId])
+}
+
+// ---------------------------------------------------------------------------
+// Evaluation corpus
+// ---------------------------------------------------------------------------
+
+model CorpusEntry {
+  id              String      @id @default(cuid())
+  ecosystem       Ecosystem   @default(NPM)
+  packageName     String
+  version         String
+  label           CorpusLabel
+  source          String
+  notes           String?
+  expectedSignals String[]    @default([])
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@unique([ecosystem, packageName, version])
+  @@index([label])
+}
+
+model EvalRun {
+  id                String   @id @default(cuid())
+  corpusSize        Int
+  truePositives     Int
+  falsePositives    Int
+  trueNegatives     Int
+  falseNegatives    Int
+  precision         Float
+  recall            Float
+  f1                Float
+  falsePositiveRate Float
+  meanLatencyMs     Int
+  p95LatencyMs      Int
+  engineVersion     String
+  perFamilyMetrics  Json     @default("{}")
+  ranAt             DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([ranAt])
+  @@index([engineVersion])
+}
+
+// ---------------------------------------------------------------------------
+// Operations
+// ---------------------------------------------------------------------------
+
+model Alert {
+  id               String    @id @default(cuid())
+  orgId            String
+  projectId        String?
+  packageVersionId String?
+  type             AlertType
+  severity         Severity
+  title            String
+  body             String
+  readAt           DateTime?
+  resolvedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  org            Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project        Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  packageVersion PackageVersion? @relation(fields: [packageVersionId], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+  @@index([orgId, readAt])
+  @@index([orgId, resolvedAt])
+  @@index([projectId])
+}
+
+model Report {
+  id            String       @id @default(cuid())
+  orgId         String
+  projectId     String?
+  type          ReportType
+  format        ReportFormat @default(JSON)
+  generatedById String?
+  params        Json         @default("{}")
+  status        ReportStatus @default(QUEUED)
+  storagePath   String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project     Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  generatedBy User?        @relation("ReportGeneratedBy", fields: [generatedById], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+  @@index([orgId, status])
+  @@index([projectId])
+}
+
+model ApiKey {
+  id          String    @id @default(cuid())
+  orgId       String
+  name        String
+  /// SHA-256 of the key. The plaintext is shown exactly once, at creation.
+  keyHash     String    @unique
+  /// Non-secret display prefix, e.g. `qrn_live_7f2a`.
+  prefix      String
+  scopes      String[]  @default([])
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdBy User?        @relation("ApiKeyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+  @@index([prefix])
+  @@index([revokedAt])
+}
+
+model Webhook {
+  id             String    @id @default(cuid())
+  orgId          String
+  url            String
+  secret         String
+  events         String[]  @default([])
+  active         Boolean   @default(true)
+  lastDeliveryAt DateTime?
+  failureCount   Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([active])
+}
+
+/// Append-only. Nothing in the application updates or deletes a row here;
+/// lib/services enforces that, and retention is handled out of band.
+model AuditLog {
+  id         String   @id @default(cuid())
+  orgId      String
+  actorId    String?
+  actorEmail String
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json     @default("{}")
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  actor User?        @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+  @@index([orgId, createdAt])
+  @@index([actorId])
+  @@index([entityType, entityId])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  orgId     String
+  type      NotificationType
+  title     String
+  body      String
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, readAt])
+  @@index([orgId])
+}
