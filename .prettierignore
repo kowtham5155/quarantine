@@ -10,4 +10,4 @@ prisma/migrations
 # Verbatim project inputs — must not be reformatted
 CLAUDE.md
 QUARANTINE_BUILD_PROMPTS.md
-QUARANTINE_PROBLEM_STATEMENT.md
+docs/PROBLEM_STATEMENT.md

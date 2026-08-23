@@ -218,11 +218,7 @@ export function can(ctx: AuthContext, permission: Permission, resource?: Resourc
 }
 
 /** `can`, but throws the error the route handlers already know how to render. */
-export function assertCan(
-  ctx: AuthContext,
-  permission: Permission,
-  resource?: ResourceRef,
-): void {
+export function assertCan(ctx: AuthContext, permission: Permission, resource?: ResourceRef): void {
   if (!can(ctx, permission, resource)) {
     throw new ForbiddenError('You do not have permission to perform this action.', {
       details: { permission },

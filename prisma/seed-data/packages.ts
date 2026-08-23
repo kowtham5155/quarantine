@@ -1,9 +1,5 @@
-import {
-  Ecosystem,
-  MaintainerEventType,
-  ProvenanceStatus,
-  Verdict,
-} from '@prisma/client';
+import type { JsonObject } from './json';
+import { Ecosystem, MaintainerEventType, ProvenanceStatus, Verdict } from '@prisma/client';
 
 /**
  * Seed package corpus — 40 packages spanning all five verdicts.
@@ -27,7 +23,7 @@ export interface SeedSignal {
   lineStart?: number;
   lineEnd?: number;
   excerpt?: string;
-  evidence?: Record<string, unknown>;
+  evidence?: JsonObject;
 }
 
 export interface SeedProvenance {
@@ -37,7 +33,7 @@ export interface SeedProvenance {
   filesOnlyInTarball?: string[];
   filesOnlyInRepo?: string[];
   modifiedFiles?: string[];
-  diffSummary?: Record<string, unknown>;
+  diffSummary?: JsonObject;
 }
 
 export interface SeedTyposquat {
@@ -52,7 +48,7 @@ export interface SeedMaintainerEvent {
   type: MaintainerEventType;
   actor: string;
   daysAgo: number;
-  metadata?: Record<string, unknown>;
+  metadata?: JsonObject;
 }
 
 export interface SeedVersion {
@@ -128,10 +124,7 @@ const KNOWN_MALICIOUS: SeedPackage[] = [
     verdict: Verdict.KNOWN_MALICIOUS,
     confidence: 0.99,
     weightedScore: 96.5,
-    hardTriggersFired: [
-      'executable_code_in_tarball_absent_from_source',
-      'known_bad_hash_match',
-    ],
+    hardTriggersFired: ['executable_code_in_tarball_absent_from_source', 'known_bad_hash_match'],
     durationMs: 8420,
     filesAnalysed: 27,
     signals: [
@@ -187,7 +180,7 @@ const KNOWN_MALICIOUS: SeedPackage[] = [
         confidence: 0.92,
         filePath: 'node_modules/flatmap-stream/index.min.js',
         lineStart: 1,
-        excerpt: "/* decoded stage 2 references a bitcoin wallet module */",
+        excerpt: '/* decoded stage 2 references a bitcoin wallet module */',
         evidence: { target: 'copay wallet build', decodedStage: 2 },
       },
     ],
@@ -250,7 +243,8 @@ const KNOWN_MALICIOUS: SeedPackage[] = [
         filePath: 'preinstall.js',
         lineStart: 12,
         lineEnd: 14,
-        excerpt: "const IS_WIN = process.platform === 'win32'; /* branches into a shell download */",
+        excerpt:
+          "const IS_WIN = process.platform === 'win32'; /* branches into a shell download */",
         evidence: { interpreters: ['cmd.exe', '/bin/sh'], platformAware: true },
       },
       {
@@ -258,7 +252,7 @@ const KNOWN_MALICIOUS: SeedPackage[] = [
         confidence: 0.98,
         filePath: 'preinstall.js',
         lineStart: 18,
-        excerpt: "/* fetches a second-stage binary over plain HTTP */",
+        excerpt: '/* fetches a second-stage binary over plain HTTP */',
         evidence: { protocol: 'http', stage: 2 },
       },
       {
@@ -298,9 +292,7 @@ const KNOWN_MALICIOUS: SeedPackage[] = [
       filesOnlyInTarball: ['preinstall.js', 'jsextension'],
       diffSummary: { added: 2, modified: 1, removed: 0 },
     },
-    maintainerEvents: [
-      { type: MaintainerEventType.PUBLISHED, actor: 'faisalman', daysAgo: 1760 },
-    ],
+    maintainerEvents: [{ type: MaintainerEventType.PUBLISHED, actor: 'faisalman', daysAgo: 1760 }],
   },
   {
     ecosystem: NPM,
@@ -480,7 +472,10 @@ const LIKELY_MALICIOUS: SeedPackage[] = [
     verdict: Verdict.LIKELY_MALICIOUS,
     confidence: 0.94,
     weightedScore: 87.4,
-    hardTriggersFired: ['install_script_with_network_exfiltration', 'credential_read_in_install_script'],
+    hardTriggersFired: [
+      'install_script_with_network_exfiltration',
+      'credential_read_in_install_script',
+    ],
     durationMs: 3120,
     filesAnalysed: 9,
     signals: [
@@ -498,7 +493,7 @@ const LIKELY_MALICIOUS: SeedPackage[] = [
         filePath: 'scripts/setup.js',
         lineStart: 7,
         lineEnd: 9,
-        excerpt: "const home = os.homedir(); /* reads .npmrc and .ssh from here */",
+        excerpt: 'const home = os.homedir(); /* reads .npmrc and .ssh from here */',
         evidence: { paths: ['~/.npmrc', '~/.ssh/id_rsa'] },
       },
       {
@@ -1610,7 +1605,11 @@ const LOW_RISK: SeedPackage[] = [
     confidence: 0.88,
     weightedScore: 12.4,
     signals: [
-      { ruleId: 'Q-MNT-004', confidence: 0.82, evidence: { maintainers: 1, weeklyDownloads: 24_000 } },
+      {
+        ruleId: 'Q-MNT-004',
+        confidence: 0.82,
+        evidence: { maintainers: 1, weeklyDownloads: 24_000 },
+      },
       { ruleId: 'Q-PRV-006', confidence: 0.99, evidence: { attestation: null } },
     ],
     provenance: {
@@ -1669,7 +1668,11 @@ const LOW_RISK: SeedPackage[] = [
     weightedScore: 18.6,
     signals: [
       { ruleId: 'Q-TYP-005', confidence: 0.61, evidence: { base: 'chalk', affix: '-colours' } },
-      { ruleId: 'Q-MNT-004', confidence: 0.78, evidence: { maintainers: 1, weeklyDownloads: 3_100 } },
+      {
+        ruleId: 'Q-MNT-004',
+        confidence: 0.78,
+        evidence: { maintainers: 1, weeklyDownloads: 3_100 },
+      },
       { ruleId: 'Q-PRV-006', confidence: 0.99, evidence: { attestation: null } },
     ],
     provenance: {
@@ -1695,7 +1698,11 @@ const LOW_RISK: SeedPackage[] = [
     weightedScore: 16.9,
     signals: [
       { ruleId: 'Q-MNT-001', confidence: 0.64, evidence: { dormantDays: 198 } },
-      { ruleId: 'Q-MNT-004', confidence: 0.8, evidence: { maintainers: 1, weeklyDownloads: 18_400 } },
+      {
+        ruleId: 'Q-MNT-004',
+        confidence: 0.8,
+        evidence: { maintainers: 1, weeklyDownloads: 18_400 },
+      },
       { ruleId: 'Q-PRV-006', confidence: 0.99, evidence: { attestation: null } },
     ],
     provenance: {
@@ -1720,7 +1727,11 @@ const LOW_RISK: SeedPackage[] = [
     confidence: 0.85,
     weightedScore: 13.2,
     signals: [
-      { ruleId: 'Q-MNT-004', confidence: 0.76, evidence: { maintainers: 1, weeklyDownloads: 7_600 } },
+      {
+        ruleId: 'Q-MNT-004',
+        confidence: 0.76,
+        evidence: { maintainers: 1, weeklyDownloads: 7_600 },
+      },
       { ruleId: 'Q-PRV-006', confidence: 0.99, evidence: { attestation: null } },
     ],
     provenance: {
@@ -1767,7 +1778,11 @@ const LOW_RISK: SeedPackage[] = [
     confidence: 0.87,
     weightedScore: 14.5,
     signals: [
-      { ruleId: 'Q-MNT-004', confidence: 0.81, evidence: { maintainers: 1, weeklyDownloads: 41_000 } },
+      {
+        ruleId: 'Q-MNT-004',
+        confidence: 0.81,
+        evidence: { maintainers: 1, weeklyDownloads: 41_000 },
+      },
       { ruleId: 'Q-PRV-006', confidence: 0.99, evidence: { attestation: null } },
     ],
     provenance: {
@@ -1792,7 +1807,11 @@ const LOW_RISK: SeedPackage[] = [
     confidence: 0.89,
     weightedScore: 11.3,
     signals: [
-      { ruleId: 'Q-MNT-006', confidence: 0.6, evidence: { historicalMedianDays: 90, latestGapDays: 15 } },
+      {
+        ruleId: 'Q-MNT-006',
+        confidence: 0.6,
+        evidence: { historicalMedianDays: 90, latestGapDays: 15 },
+      },
       { ruleId: 'Q-PRV-006', confidence: 0.99, evidence: { attestation: null } },
     ],
     provenance: {

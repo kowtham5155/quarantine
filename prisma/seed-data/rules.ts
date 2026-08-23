@@ -183,10 +183,7 @@ export const SEED_RULES: SeedRule[] = [
     baseWeight: 8,
     remediation:
       'Do not install. View the file with bidi rendering disabled to see the true token order.',
-    references: [
-      'https://nvd.nist.gov/vuln/detail/CVE-2021-42574',
-      'https://trojansource.codes/',
-    ],
+    references: ['https://nvd.nist.gov/vuln/detail/CVE-2021-42574', 'https://trojansource.codes/'],
   },
   {
     ruleId: 'Q-OBF-006',
@@ -280,8 +277,7 @@ export const SEED_RULES: SeedRule[] = [
       'The package references ~/.ssh, ~/.aws, ~/.npmrc, a keychain path, or a browser credential store. These paths have no role in a package’s own functionality.',
     severity: Severity.CRITICAL,
     baseWeight: 9,
-    remediation:
-      'Do not install. Rotate the credentials at every path named in the evidence.',
+    remediation: 'Do not install. Rotate the credentials at every path named in the evidence.',
     references: ['https://attack.mitre.org/techniques/T1552/'],
   },
   {
@@ -360,8 +356,7 @@ export const SEED_RULES: SeedRule[] = [
       'The name substitutes visually identical characters — Cyrillic а for Latin a, a Turkish dotless ı for i. The rendered name is indistinguishable from the target while being a completely different string.',
     severity: Severity.HIGH,
     baseWeight: 7,
-    remediation:
-      'Do not install. Compare the raw bytes of the name against the intended package.',
+    remediation: 'Do not install. Compare the raw bytes of the name against the intended package.',
     references: ['https://www.unicode.org/reports/tr39/'],
   },
   {
@@ -411,9 +406,7 @@ export const SEED_RULES: SeedRule[] = [
     baseWeight: 6,
     remediation:
       'Pin your internal scope in .npmrc and confirm the resolver cannot fall back to the public registry for it.',
-    references: [
-      'https://medium.com/@alex.birsan/dependency-confusion-4a5d60fec610',
-    ],
+    references: ['https://medium.com/@alex.birsan/dependency-confusion-4a5d60fec610'],
   },
 
   // -------------------------------------------------------------------------

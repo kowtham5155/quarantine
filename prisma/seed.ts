@@ -29,6 +29,7 @@ import {
 import { createHash, randomBytes } from 'node:crypto';
 
 import { SEED_CORPUS } from './seed-data/corpus';
+import type { JsonObject } from './seed-data/json';
 import { SEED_PACKAGES, type SeedPackage } from './seed-data/packages';
 import { SEED_RULES } from './seed-data/rules';
 
@@ -628,10 +629,7 @@ const FLAGGED_VERDICTS = new Set<Verdict>([
   Verdict.KNOWN_MALICIOUS,
 ]);
 
-const BLOCKED_VERDICTS = new Set<Verdict>([
-  Verdict.LIKELY_MALICIOUS,
-  Verdict.KNOWN_MALICIOUS,
-]);
+const BLOCKED_VERDICTS = new Set<Verdict>([Verdict.LIKELY_MALICIOUS, Verdict.KNOWN_MALICIOUS]);
 
 interface ProjectIndexEntry {
   id: string;
@@ -640,10 +638,7 @@ interface ProjectIndexEntry {
   dependencyPackageNames: string[];
 }
 
-async function seedProjects(
-  orgs: SeedOrgs,
-  packages: PackageIndex,
-): Promise<ProjectIndexEntry[]> {
+async function seedProjects(orgs: SeedOrgs, packages: PackageIndex): Promise<ProjectIndexEntry[]> {
   const created: ProjectIndexEntry[] = [];
 
   for (const spec of PROJECT_SPECS) {
@@ -759,7 +754,7 @@ interface PolicySpec {
   action: PolicyAction;
   priority: number;
   enabled: boolean;
-  conditions: Record<string, unknown>;
+  conditions: JsonObject;
   /** Predicate deciding which seeded packages this policy fires on. */
   matches: (entry: PackageIndexEntry) => boolean;
 }
@@ -1177,3 +1172,430 @@ async function seedEvalRuns(): Promise<void> {
     },
   });
 }
+
+// ---------------------------------------------------------------------------
+// Operations: alerts, keys, webhooks, audit, notifications, reports
+// ---------------------------------------------------------------------------
+
+async function seedOps(
+  orgs: SeedOrgs,
+  users: SeedUsers,
+  packages: PackageIndex,
+  projects: ProjectIndexEntry[],
+): Promise<void> {
+  const acmeProjects = projects.filter((project) => project.orgId === orgs.acme.id);
+  const frontend = acmeProjects.find((project) => project.name === 'web-frontend');
+  const gateway = acmeProjects.find((project) => project.name === 'api-gateway');
+
+  // --- Alerts -------------------------------------------------------------
+  const alertTargets = [...packages.values()].filter(
+    (entry) => BLOCKED_VERDICTS.has(entry.verdict) && entry.analyses.has(orgs.acme.id),
+  );
+
+  let alertIndex = 0;
+  for (const entry of alertTargets) {
+    const unread = alertIndex < 4;
+    await prisma.alert.create({
+      data: {
+        orgId: orgs.acme.id,
+        projectId: alertIndex % 2 === 0 ? (frontend?.id ?? null) : (gateway?.id ?? null),
+        packageVersionId: entry.versionId,
+        type: AlertType.MALICIOUS_VERDICT,
+        severity: entry.verdict === Verdict.KNOWN_MALICIOUS ? Severity.CRITICAL : Severity.HIGH,
+        title: `${entry.name}@${entry.version} rated ${entry.verdict.replace('_', ' ').toLowerCase()}`,
+        body:
+          entry.verdict === Verdict.KNOWN_MALICIOUS
+            ? 'This release matches a confirmed malicious package. It has been held in quarantine and blocked from all projects.'
+            : 'Hard triggers fired during static analysis. The package is blocked pending review.',
+        readAt: unread ? null : hoursAgo(4),
+        resolvedAt: alertIndex > 8 ? hoursAgo(2) : null,
+        createdAt: hoursAgo(3 + alertIndex * 2),
+      },
+    });
+    alertIndex++;
+  }
+
+  await prisma.alert.create({
+    data: {
+      orgId: orgs.acme.id,
+      type: AlertType.EXCEPTION_EXPIRING,
+      severity: Severity.MEDIUM,
+      title: 'An exception has expired and reverted to enforcing',
+      body: 'The waiver for sharp-resize-lite expired 9 days ago. The package is blocking again.',
+      createdAt: daysAgo(9),
+    },
+  });
+
+  await prisma.alert.create({
+    data: {
+      orgId: orgs.northwind.id,
+      type: AlertType.CAMPAIGN_MATCH,
+      severity: Severity.HIGH,
+      title: 'A dependency matched an active campaign',
+      body: 'node-fetch-cli shares an exfiltration endpoint with three other packages in the chat-webhook cluster.',
+      createdAt: hoursAgo(14),
+    },
+  });
+
+  // --- API keys -----------------------------------------------------------
+  for (const spec of [
+    {
+      org: orgs.acme,
+      name: 'CI — GitHub Actions',
+      prefix: 'qrn_live_7f2a',
+      scopes: ['scan:create', 'analysis:read', 'project:read'],
+      lastUsedHours: 1,
+      revoked: false,
+      creator: users.security.id,
+    },
+    {
+      org: orgs.acme,
+      name: 'Local CLI — Ada',
+      prefix: 'qrn_live_c41d',
+      scopes: ['scan:create', 'analysis:read'],
+      lastUsedHours: 30,
+      revoked: false,
+      creator: users.admin.id,
+    },
+    {
+      org: orgs.acme,
+      name: 'Deprecated build agent',
+      prefix: 'qrn_live_9b03',
+      scopes: ['scan:create'],
+      lastUsedHours: 2400,
+      revoked: true,
+      creator: users.security.id,
+    },
+    {
+      org: orgs.northwind,
+      name: 'CI — Buildkite',
+      prefix: 'qrn_live_2e58',
+      scopes: ['scan:create', 'analysis:read', 'project:read', 'violation:read'],
+      lastUsedHours: 6,
+      revoked: false,
+      creator: users.owner.id,
+    },
+  ]) {
+    await prisma.apiKey.create({
+      data: {
+        orgId: spec.org.id,
+        name: spec.name,
+        // Only the hash is ever stored; the plaintext is shown once at creation.
+        keyHash: sha256(`${spec.prefix}.${randomBytes(24).toString('hex')}`),
+        prefix: spec.prefix,
+        scopes: spec.scopes,
+        lastUsedAt: hoursAgo(spec.lastUsedHours),
+        revokedAt: spec.revoked ? daysAgo(40) : null,
+        createdById: spec.creator,
+        createdAt: daysAgo(spec.revoked ? 300 : 150),
+      },
+    });
+  }
+
+  // --- Webhooks -----------------------------------------------------------
+  await prisma.webhook.create({
+    data: {
+      orgId: orgs.acme.id,
+      url: 'https://hooks.acme.example/quarantine',
+      secret: randomBytes(32).toString('hex'),
+      events: ['analysis.completed', 'policy.violation', 'quarantine.held'],
+      active: true,
+      lastDeliveryAt: hoursAgo(2),
+      failureCount: 0,
+      createdAt: daysAgo(200),
+    },
+  });
+
+  await prisma.webhook.create({
+    data: {
+      orgId: orgs.acme.id,
+      url: 'https://legacy.acme.example/security-events',
+      secret: randomBytes(32).toString('hex'),
+      events: ['analysis.completed'],
+      active: false,
+      lastDeliveryAt: daysAgo(18),
+      failureCount: 14,
+      createdAt: daysAgo(280),
+    },
+  });
+
+  await prisma.webhook.create({
+    data: {
+      orgId: orgs.northwind.id,
+      url: 'https://northwind.example/api/security/quarantine',
+      secret: randomBytes(32).toString('hex'),
+      events: ['policy.violation', 'campaign.match'],
+      active: true,
+      lastDeliveryAt: hoursAgo(9),
+      failureCount: 1,
+      createdAt: daysAgo(120),
+    },
+  });
+
+  // --- Audit log ----------------------------------------------------------
+  const auditEntries: Array<{
+    actor: User;
+    org: Organization;
+    action: string;
+    entityType: string;
+    hoursAgo: number;
+    metadata: JsonObject;
+  }> = [
+    {
+      actor: users.security,
+      org: orgs.acme,
+      action: 'policy.enabled',
+      entityType: 'Policy',
+      hoursAgo: 5,
+      metadata: { name: 'Block typosquat candidates' },
+    },
+    {
+      actor: users.security,
+      org: orgs.acme,
+      action: 'quarantine.confirmed_bad',
+      entityType: 'QuarantineItem',
+      hoursAgo: 12,
+      metadata: { package: 'event-stream@3.3.6' },
+    },
+    {
+      actor: users.security,
+      org: orgs.acme,
+      action: 'quarantine.released',
+      entityType: 'QuarantineItem',
+      hoursAgo: 12,
+      metadata: { package: 'ua-parser-js@0.7.29', reason: 'Superseded by a patched release' },
+    },
+    {
+      actor: users.analyst,
+      org: orgs.acme,
+      action: 'exception.requested',
+      entityType: 'Exception',
+      hoursAgo: 576,
+      metadata: { package: 'build-tools-native@1.4.0' },
+    },
+    {
+      actor: users.security,
+      org: orgs.acme,
+      action: 'exception.approved',
+      entityType: 'Exception',
+      hoursAgo: 570,
+      metadata: { package: 'build-tools-native@1.4.0', expiresInDays: 84 },
+    },
+    {
+      actor: users.admin,
+      org: orgs.acme,
+      action: 'apikey.created',
+      entityType: 'ApiKey',
+      hoursAgo: 3600,
+      metadata: { name: 'Local CLI — Ada', prefix: 'qrn_live_c41d' },
+    },
+    {
+      actor: users.security,
+      org: orgs.acme,
+      action: 'apikey.revoked',
+      entityType: 'ApiKey',
+      hoursAgo: 960,
+      metadata: { name: 'Deprecated build agent', prefix: 'qrn_live_9b03' },
+    },
+    {
+      actor: users.admin,
+      org: orgs.acme,
+      action: 'member.invited',
+      entityType: 'Invitation',
+      hoursAgo: 48,
+      metadata: { email: 'new.engineer@acme.example', role: 'ANALYST' },
+    },
+    {
+      actor: users.owner,
+      org: orgs.northwind,
+      action: 'policy.created',
+      entityType: 'Policy',
+      hoursAgo: 4320,
+      metadata: { name: 'Block anything suspicious or worse' },
+    },
+    {
+      actor: users.triage,
+      org: orgs.northwind,
+      action: 'exception.requested',
+      entityType: 'Exception',
+      hoursAgo: 72,
+      metadata: { package: 'cli-progress-native@2.0.0' },
+    },
+  ];
+
+  for (const entry of auditEntries) {
+    await prisma.auditLog.create({
+      data: {
+        orgId: entry.org.id,
+        actorId: entry.actor.id,
+        actorEmail: entry.actor.email,
+        action: entry.action,
+        entityType: entry.entityType,
+        entityId: null,
+        metadata: entry.metadata,
+        ip: '203.0.113.24',
+        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+        createdAt: hoursAgo(entry.hoursAgo),
+      },
+    });
+  }
+
+  // --- Notifications ------------------------------------------------------
+  await prisma.notification.createMany({
+    data: [
+      {
+        userId: users.admin.id,
+        orgId: orgs.acme.id,
+        type: NotificationType.ALERT,
+        title: 'event-stream@3.3.6 rated known malicious',
+        body: 'Held in quarantine and blocked from all projects.',
+        link: '/quarantine',
+        createdAt: hoursAgo(3),
+      },
+      {
+        userId: users.admin.id,
+        orgId: orgs.acme.id,
+        type: NotificationType.EXCEPTION_REQUEST,
+        title: 'Tom Bakare requested an exception',
+        body: 'build-tools-native@1.4.0 — native toolchain dependency.',
+        link: '/exceptions',
+        readAt: hoursAgo(500),
+        createdAt: hoursAgo(576),
+      },
+      {
+        userId: users.security.id,
+        orgId: orgs.acme.id,
+        type: NotificationType.SCAN_COMPLETE,
+        title: 'web-frontend scan finished',
+        body: '11 dependencies analysed, 2 flagged, 1 blocked.',
+        link: '/projects',
+        createdAt: hoursAgo(5),
+      },
+      {
+        userId: users.analyst.id,
+        orgId: orgs.acme.id,
+        type: NotificationType.EXCEPTION_DECISION,
+        title: 'Your exception request was approved',
+        body: 'build-tools-native@1.4.0 — expires in 60 days.',
+        link: '/exceptions',
+        createdAt: hoursAgo(570),
+      },
+      {
+        userId: users.triage.id,
+        orgId: orgs.northwind.id,
+        type: NotificationType.ALERT,
+        title: 'A dependency matched an active campaign',
+        body: 'node-fetch-cli shares an exfiltration endpoint with three other packages.',
+        link: '/campaigns',
+        createdAt: hoursAgo(14),
+      },
+    ],
+  });
+
+  // --- Reports ------------------------------------------------------------
+  await prisma.report.create({
+    data: {
+      orgId: orgs.acme.id,
+      type: ReportType.ORG_POSTURE,
+      format: ReportFormat.PDF,
+      generatedById: users.admin.id,
+      params: { window: '30d', includeResolved: false },
+      status: ReportStatus.READY,
+      storagePath: 'reports/acme/org-posture-30d.pdf',
+      createdAt: daysAgo(4),
+    },
+  });
+
+  await prisma.report.create({
+    data: {
+      orgId: orgs.acme.id,
+      projectId: frontend?.id ?? null,
+      type: ReportType.SBOM,
+      format: ReportFormat.JSON,
+      generatedById: users.analyst.id,
+      params: { spec: 'CycloneDX', version: '1.5' },
+      status: ReportStatus.READY,
+      storagePath: 'reports/acme/web-frontend-sbom.cdx.json',
+      createdAt: daysAgo(1),
+    },
+  });
+
+  await prisma.report.create({
+    data: {
+      orgId: orgs.northwind.id,
+      type: ReportType.VIOLATIONS,
+      format: ReportFormat.CSV,
+      generatedById: users.owner.id,
+      params: { window: '7d' },
+      status: ReportStatus.GENERATING,
+      createdAt: hoursAgo(1),
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
+
+async function main(): Promise<void> {
+  console.log('Resetting…');
+  await reset();
+
+  console.log('Organisations and users…');
+  const orgs = await seedOrganizations();
+  const users = await seedUsers(orgs);
+
+  console.log(`Rules (${SEED_RULES.length})…`);
+  await seedRules();
+
+  console.log(`Packages, versions and analyses (${SEED_PACKAGES.length})…`);
+  const packages = await seedPackages(orgs);
+
+  console.log(`Projects (${PROJECT_SPECS.length})…`);
+  const projects = await seedProjects(orgs, packages);
+
+  console.log(`Policies (${POLICY_SPECS.length}), violations, exceptions, quarantine…`);
+  await seedPolicies(orgs, packages, projects, users);
+
+  console.log('Campaigns…');
+  await seedCampaigns(orgs, packages);
+
+  console.log(`Corpus (${SEED_CORPUS.length}) and evaluation runs…`);
+  await seedCorpus();
+  await seedEvalRuns();
+
+  console.log('Alerts, keys, webhooks, audit log, notifications, reports…');
+  await seedOps(orgs, users, packages, projects);
+
+  const counts = {
+    organizations: await prisma.organization.count(),
+    users: await prisma.user.count(),
+    rules: await prisma.rule.count(),
+    packages: await prisma.package.count(),
+    packageVersions: await prisma.packageVersion.count(),
+    analyses: await prisma.analysis.count(),
+    signalHits: await prisma.signalHit.count(),
+    projects: await prisma.project.count(),
+    dependencies: await prisma.dependency.count(),
+    policies: await prisma.policy.count(),
+    violations: await prisma.policyViolation.count(),
+    quarantine: await prisma.quarantineItem.count(),
+    campaigns: await prisma.campaign.count(),
+    corpusEntries: await prisma.corpusEntry.count(),
+  };
+
+  console.log('\nSeed complete:');
+  for (const [key, value] of Object.entries(counts)) {
+    console.log(`  ${key.padEnd(18)} ${value}`);
+  }
+  console.log(`\nDemo login: admin@quarantine.dev / ${DEMO_PASSWORD}`);
+}
+
+main()
+  .catch((error: unknown) => {
+    console.error(error);
+    process.exitCode = 1;
+  })
+  .finally(() => {
+    void prisma.$disconnect();
+  });
