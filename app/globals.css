@@ -1,0 +1,298 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@config '../tailwind.config.ts';
+
+/*
+ * Quarantine design tokens.
+ *
+ * Dark-first: `:root` carries the dark palette so the shell renders correctly
+ * before any theme class is applied (no light flash on first paint). `.light`
+ * overrides the neutral ramp; `.dark` is declared alongside `:root` so an
+ * explicit theme class is also honoured.
+ *
+ * Verdict and signal-family colours are brand constants — they are identical
+ * in both themes so a screenshot of a verdict always means the same thing.
+ */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root,
+.dark {
+  color-scheme: dark;
+
+  /* ---- neutral ramp (zinc / slate) ---- */
+  --background: #09090b;
+  --foreground: #fafafa;
+  --card: #0e0e11;
+  --card-foreground: #fafafa;
+  --popover: #131316;
+  --popover-foreground: #fafafa;
+  --muted: #18181b;
+  --muted-foreground: #a1a1aa;
+  --secondary: #1c1c20;
+  --secondary-foreground: #e4e4e7;
+  --accent: #27272a;
+  --accent-foreground: #fafafa;
+  --border: #27272a;
+  --input: #2a2a2e;
+  --surface: #131316;
+  --surface-raised: #1a1a1e;
+
+  /* ---- the single blue accent ---- */
+  --primary: #3b82f6;
+  --primary-foreground: #08111f;
+  --primary-muted: #1d4ed8;
+  --ring: #3b82f6;
+
+  /* ---- state ---- */
+  --destructive: #dc2626;
+  --destructive-foreground: #fef2f2;
+  --success: #059669;
+  --warning: #ca8a04;
+
+  /* ---- sidebar ---- */
+  --sidebar: #0b0b0e;
+  --sidebar-foreground: #e4e4e7;
+  --sidebar-primary: #3b82f6;
+  --sidebar-primary-foreground: #08111f;
+  --sidebar-accent: #1c1c20;
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: #1f1f23;
+  --sidebar-ring: #3b82f6;
+}
+
+.light {
+  color-scheme: light;
+
+  --background: #ffffff;
+  --foreground: #09090b;
+  --card: #ffffff;
+  --card-foreground: #09090b;
+  --popover: #ffffff;
+  --popover-foreground: #09090b;
+  --muted: #f4f4f5;
+  --muted-foreground: #52525b;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #18181b;
+  --accent: #f4f4f5;
+  --accent-foreground: #18181b;
+  --border: #e4e4e7;
+  --input: #d4d4d8;
+  --surface: #fafafa;
+  --surface-raised: #f4f4f5;
+
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --primary-muted: #1d4ed8;
+  --ring: #2563eb;
+
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --success: #047857;
+  --warning: #a16207;
+
+  --sidebar: #fafafa;
+  --sidebar-foreground: #18181b;
+  --sidebar-primary: #2563eb;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f4f4f5;
+  --sidebar-accent-foreground: #18181b;
+  --sidebar-border: #e4e4e7;
+  --sidebar-ring: #2563eb;
+}
+
+/*
+ * Verdict scale — fixed values from the design spec. Each verdict exposes four
+ * tokens: the solid fill, a foreground guaranteed >= 4.5:1 against that fill,
+ * an `accent` used for text and borders on the dark surface, and a translucent
+ * `surface` tint for outline badges and callout panels.
+ */
+:root,
+.dark,
+.light {
+  --verdict-known-malicious: #991b1b;
+  --verdict-known-malicious-foreground: #ffffff;
+  --verdict-known-malicious-accent: #ef4444;
+  --verdict-known-malicious-surface: color-mix(in srgb, #991b1b 20%, transparent);
+
+  --verdict-likely-malicious: #dc2626;
+  --verdict-likely-malicious-foreground: #ffffff;
+  --verdict-likely-malicious-accent: #f87171;
+  --verdict-likely-malicious-surface: color-mix(in srgb, #dc2626 18%, transparent);
+
+  --verdict-suspicious: #ea580c;
+  --verdict-suspicious-foreground: #1a0f04;
+  --verdict-suspicious-accent: #fb923c;
+  --verdict-suspicious-surface: color-mix(in srgb, #ea580c 18%, transparent);
+
+  --verdict-low-risk: #ca8a04;
+  --verdict-low-risk-foreground: #171004;
+  --verdict-low-risk-accent: #facc15;
+  --verdict-low-risk-surface: color-mix(in srgb, #ca8a04 18%, transparent);
+
+  --verdict-clean: #059669;
+  --verdict-clean-foreground: #04140d;
+  --verdict-clean-accent: #34d399;
+  --verdict-clean-surface: color-mix(in srgb, #059669 18%, transparent);
+
+  /* ---- signal families (six independent detector groups) ---- */
+  --signal-install: #f43f5e;
+  --signal-install-surface: color-mix(in srgb, #f43f5e 16%, transparent);
+  --signal-obfuscation: #14b8a6;
+  --signal-obfuscation-surface: color-mix(in srgb, #14b8a6 16%, transparent);
+  --signal-capability: #f59e0b;
+  --signal-capability-surface: color-mix(in srgb, #f59e0b 16%, transparent);
+  --signal-typosquat: #06b6d4;
+  --signal-typosquat-surface: color-mix(in srgb, #06b6d4 16%, transparent);
+  --signal-maintainer: #84cc16;
+  --signal-maintainer-surface: color-mix(in srgb, #84cc16 16%, transparent);
+  --signal-provenance: #6366f1;
+  --signal-provenance-surface: color-mix(in srgb, #6366f1 16%, transparent);
+
+  /* ---- charts (Recharts series) ---- */
+  --chart-1: #3b82f6;
+  --chart-2: #14b8a6;
+  --chart-3: #f59e0b;
+  --chart-4: #f43f5e;
+  --chart-5: #a3a3a3;
+
+  /* ---- radii ---- */
+  --radius: 0.5rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-muted: var(--primary-muted);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --color-verdict-known-malicious: var(--verdict-known-malicious);
+  --color-verdict-known-malicious-foreground: var(--verdict-known-malicious-foreground);
+  --color-verdict-known-malicious-accent: var(--verdict-known-malicious-accent);
+  --color-verdict-known-malicious-surface: var(--verdict-known-malicious-surface);
+  --color-verdict-likely-malicious: var(--verdict-likely-malicious);
+  --color-verdict-likely-malicious-foreground: var(--verdict-likely-malicious-foreground);
+  --color-verdict-likely-malicious-accent: var(--verdict-likely-malicious-accent);
+  --color-verdict-likely-malicious-surface: var(--verdict-likely-malicious-surface);
+  --color-verdict-suspicious: var(--verdict-suspicious);
+  --color-verdict-suspicious-foreground: var(--verdict-suspicious-foreground);
+  --color-verdict-suspicious-accent: var(--verdict-suspicious-accent);
+  --color-verdict-suspicious-surface: var(--verdict-suspicious-surface);
+  --color-verdict-low-risk: var(--verdict-low-risk);
+  --color-verdict-low-risk-foreground: var(--verdict-low-risk-foreground);
+  --color-verdict-low-risk-accent: var(--verdict-low-risk-accent);
+  --color-verdict-low-risk-surface: var(--verdict-low-risk-surface);
+  --color-verdict-clean: var(--verdict-clean);
+  --color-verdict-clean-foreground: var(--verdict-clean-foreground);
+  --color-verdict-clean-accent: var(--verdict-clean-accent);
+  --color-verdict-clean-surface: var(--verdict-clean-surface);
+
+  --color-signal-install: var(--signal-install);
+  --color-signal-install-surface: var(--signal-install-surface);
+  --color-signal-obfuscation: var(--signal-obfuscation);
+  --color-signal-obfuscation-surface: var(--signal-obfuscation-surface);
+  --color-signal-capability: var(--signal-capability);
+  --color-signal-capability-surface: var(--signal-capability-surface);
+  --color-signal-typosquat: var(--signal-typosquat);
+  --color-signal-typosquat-surface: var(--signal-typosquat-surface);
+  --color-signal-maintainer: var(--signal-maintainer);
+  --color-signal-maintainer-surface: var(--signal-maintainer-surface);
+  --color-signal-provenance: var(--signal-provenance);
+  --color-signal-provenance-surface: var(--signal-provenance-surface);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+    font-variation-settings: normal;
+  }
+
+  /* Package names, versions, hashes and code are always monospace. */
+  code,
+  kbd,
+  pre,
+  samp {
+    @apply font-mono;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--primary) 30%, transparent);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Package-derived strings are rendered inside these; never let them break layout. */
+  .break-anywhere {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
