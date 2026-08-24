@@ -22,8 +22,15 @@ const PUBLIC_PREFIXES = [
   '/register',
   '/forgot-password',
   '/reset-password',
-  '/verify',
+  '/verify-email',
+  // The invite page renders a sign-in prompt itself when there is no session,
+  // so it must not be bounced to /login before it can name the organisation.
+  '/accept-invite',
   '/pricing',
+  '/how-it-works',
+  '/detections',
+  '/research',
+  '/security',
   '/docs',
   '/legal',
   '/p', // public package report permalinks

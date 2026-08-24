@@ -222,19 +222,23 @@ model Organization {
 }
 
 model User {
-  id               String    @id @default(cuid())
-  email            String    @unique
-  passwordHash     String
-  name             String
-  avatarUrl        String?
-  emailVerifiedAt  DateTime?
-  totpSecret       String?
-  totpEnabled      Boolean   @default(false)
-  lastLoginAt      DateTime?
-  failedLoginCount Int       @default(0)
-  lockedUntil      DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id                String    @id @default(cuid())
+  email             String    @unique
+  passwordHash      String
+  name              String
+  avatarUrl         String?
+  emailVerifiedAt   DateTime?
+  totpSecret        String?
+  totpEnabled       Boolean   @default(false)
+  /// SHA-256 digests of single-use recovery codes. Plaintext is shown once.
+  totpRecoveryCodes String[]  @default([])
+  /// Last accepted TOTP time step, so a code cannot be replayed in its window.
+  lastTotpTimeStep  Int?
+  lastLoginAt       DateTime?
+  failedLoginCount  Int       @default(0)
+  lockedUntil       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   memberships         Membership[]
   sessions            Session[]
@@ -245,6 +249,7 @@ model User {
   requestedExceptions Exception[]      @relation("ExceptionRequestedBy")
   approvedExceptions  Exception[]      @relation("ExceptionApprovedBy")
   reviewedQuarantine  QuarantineItem[] @relation("QuarantineReviewedBy")
+  loginChallenges     LoginChallenge[]
 
   @@index([lockedUntil])
 }
@@ -892,4 +897,44 @@ model Notification {
   @@index([userId])
   @@index([userId, readAt])
   @@index([orgId])
+}
+
+// ---------------------------------------------------------------------------
+// Auth infrastructure
+// ---------------------------------------------------------------------------
+
+/// One row per counted attempt. The sliding window is evaluated by counting
+/// rows in a bucket newer than (now - window), which needs no Redis and no
+/// background expiry — a periodic sweep deletes rows past the longest window.
+model RateLimitEvent {
+  id         String   @id @default(cuid())
+  /// Composite key, e.g. `login:ip=203.0.113.4&email=a@b.c`.
+  bucket     String
+  occurredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([bucket, occurredAt])
+  @@index([occurredAt])
+}
+
+/// Issued once a password has been verified, consumed by the credentials
+/// provider. Keeping the password out of the second step means it never has to
+/// be held in the browser across the TOTP prompt.
+model LoginChallenge {
+  id           String    @id @default(cuid())
+  userId       String
+  tokenHash    String    @unique
+  totpRequired Boolean   @default(false)
+  ip           String?
+  userAgent    String?
+  expiresAt    DateTime
+  consumedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }
