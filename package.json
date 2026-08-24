@@ -23,6 +23,8 @@
     "db:reset": "dotenv -e .env.local -- prisma migrate reset"
   },
   "dependencies": {
+    "@babel/parser": "8.0.4",
+    "@babel/types": "8.0.4",
     "@node-rs/argon2": "2.1.0",
     "@prisma/client": "6.19.3",
     "@zxcvbn-ts/core": "4.2.0",
@@ -47,6 +49,7 @@
     "sonner": "2.0.8",
     "tailwind-merge": "3.6.0",
     "tar": "7.5.22",
+    "undici": "8.10.0",
     "zod": "4.4.3"
   },
   "devDependencies": {
