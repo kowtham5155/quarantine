@@ -857,8 +857,12 @@ model Webhook {
 /// Append-only. Nothing in the application updates or deletes a row here;
 /// lib/services enforces that, and retention is handled out of band.
 model AuditLog {
-  id         String   @id @default(cuid())
-  orgId      String
+  id String @id @default(cuid())
+
+  /// Null for events that happen before a session exists — a failed login, an
+  /// email verification, a password reset request. Those belong to no
+  /// organisation, and attributing them to one would be a guess.
+  orgId      String?
   actorId    String?
   actorEmail String
   action     String
@@ -870,12 +874,13 @@ model AuditLog {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  actor User?        @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  org   Organization? @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  actor User?         @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([orgId])
   @@index([orgId, createdAt])
   @@index([actorId])
+  @@index([actorEmail, createdAt])
   @@index([entityType, entityId])
 }
 

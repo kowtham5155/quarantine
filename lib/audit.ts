@@ -18,7 +18,12 @@ import type { JsonObject } from '@/prisma/seed-data/json';
 export interface AuditActor {
   userId: string | null;
   email: string;
-  orgId: string;
+  /**
+   * Null for events that happen before a session exists. Do not substitute a
+   * placeholder org: a null here means "no organisation", which is the truth,
+   * and an org-scoped audit query must not surface these rows.
+   */
+  orgId: string | null;
 }
 
 export interface AuditRequestInfo {
@@ -97,18 +102,56 @@ export async function audit(
 }
 
 /**
- * Audit an event that happens before a session exists — registration, a failed
- * login, a password reset. `userId` may be null and the org may be a
- * placeholder the user is not yet a member of.
+ * Audit an authenticated action against a known organisation when the caller
+ * does not hold a full AuthContext.
+ *
+ * This is not a loophole around `audit()`: it exists for the two real cases
+ * where the org is verified but no role is in play yet — creating an
+ * organisation (the membership is created in the same transaction) and
+ * accepting an invitation or switching org (the membership has just been read
+ * back from the database). The caller must have established that `orgId` is one
+ * the actor genuinely belongs to.
  */
-export async function auditAnonymous(
-  actor: AuditActor,
+export async function auditForOrg(
+  actor: { userId: string; email: string },
+  orgId: string,
   action: AuditAction,
   entity: AuditEntity,
   metadata: JsonObject = {},
   request: AuditRequestInfo = {},
 ): Promise<void> {
-  await writeAudit(actor, action, entity, metadata, request);
+  await writeAudit(
+    { userId: actor.userId, email: actor.email, orgId },
+    action,
+    entity,
+    metadata,
+    request,
+  );
+}
+
+/**
+ * Audit an event that happens before a session exists — registration, a failed
+ * login, an email verification, a password reset request.
+ *
+ * These rows carry `orgId: null`. The caller does not get to pass an org,
+ * because at this point in the request there is no trustworthy one to pass:
+ * the actor may belong to several organisations, or to none, and guessing
+ * would put a stranger's failed login into somebody's compliance export.
+ */
+export async function auditAnonymous(
+  actor: { userId: string | null; email: string },
+  action: AuditAction,
+  entity: AuditEntity,
+  metadata: JsonObject = {},
+  request: AuditRequestInfo = {},
+): Promise<void> {
+  await writeAudit(
+    { userId: actor.userId, email: actor.email, orgId: null },
+    action,
+    entity,
+    metadata,
+    request,
+  );
 }
 
 async function writeAudit(

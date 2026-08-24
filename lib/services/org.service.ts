@@ -1,7 +1,7 @@
 import { Plan, Role } from '@prisma/client';
 import { z } from 'zod';
 
-import { audit, auditAnonymous } from '@/lib/audit';
+import { audit, auditForOrg } from '@/lib/audit';
 import { prisma } from '@/lib/db';
 import { ForbiddenError, NotFoundError, ValidationError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
@@ -150,8 +150,9 @@ export async function create(
     return created;
   });
 
-  await auditAnonymous(
-    { userId: actor.userId, email: actor.email, orgId: org.id },
+  await auditForOrg(
+    { userId: actor.userId, email: actor.email },
+    org.id,
     'org.created',
     { type: 'Organization', id: org.id },
     { name, slug },
@@ -518,8 +519,9 @@ export async function acceptInvite(
     });
   });
 
-  await auditAnonymous(
-    { userId: actor.userId, email: actor.email, orgId: invitation.orgId },
+  await auditForOrg(
+    { userId: actor.userId, email: actor.email },
+    invitation.orgId,
     'member.invite_accepted',
     { type: 'Membership', id: invitation.id },
     { role: invitation.role },
@@ -702,8 +704,9 @@ export async function switchOrg(
     throw new NotFoundError('Unknown organisation.');
   }
 
-  await auditAnonymous(
-    { userId: actor.userId, email: actor.email, orgId },
+  await auditForOrg(
+    { userId: actor.userId, email: actor.email },
+    orgId,
     'org.switched',
     { type: 'Organization', id: orgId },
     {},

@@ -38,16 +38,6 @@ export interface RequestInfo {
   userAgent?: string | null;
 }
 
-/** Placeholder org for audit lines written before a membership exists. */
-async function systemOrgId(): Promise<string | null> {
-  const org = await prisma.organization.findFirst({
-    where: { deletedAt: null },
-    orderBy: { createdAt: 'asc' },
-    select: { id: true },
-  });
-  return org?.id ?? null;
-}
-
 const emailSchema = z.string().trim().toLowerCase().email('Enter a valid email address.').max(254);
 
 // ---------------------------------------------------------------------------
@@ -112,16 +102,13 @@ export async function register(
     },
   });
 
-  const orgId = await systemOrgId();
-  if (orgId) {
-    await auditAnonymous(
-      { userId: user.id, email, orgId },
-      'auth.registered',
-      { type: 'User', id: user.id },
-      { name },
-      request,
-    );
-  }
+  await auditAnonymous(
+    { userId: user.id, email },
+    'auth.registered',
+    { type: 'User', id: user.id },
+    { name },
+    request,
+  );
 
   return {
     ok: true,
@@ -233,16 +220,13 @@ export async function beginLogin(
         throw new AuthError('That verification code is not valid.');
       }
 
-      const recoveryOrgId = await systemOrgId();
-      if (recoveryOrgId) {
-        await auditAnonymous(
-          { userId: user.id, email, orgId: recoveryOrgId },
-          'auth.recovery_code_used',
-          { type: 'User', id: user.id },
-          { remaining: user.totpRecoveryCodes.length - 1 },
-          request,
-        );
-      }
+      await auditAnonymous(
+        { userId: user.id, email },
+        'auth.recovery_code_used',
+        { type: 'User', id: user.id },
+        { remaining: user.totpRecoveryCodes.length - 1 },
+        request,
+      );
     }
   }
 
@@ -266,16 +250,13 @@ export async function beginLogin(
 
   await resetRateLimit(bucketKey('login', { ip: request.ip, email }));
 
-  const orgId = await systemOrgId();
-  if (orgId) {
-    await auditAnonymous(
-      { userId: user.id, email, orgId },
-      'auth.login_succeeded',
-      { type: 'User', id: user.id },
-      { totpUsed: user.totpEnabled },
-      request,
-    );
-  }
+  await auditAnonymous(
+    { userId: user.id, email },
+    'auth.login_succeeded',
+    { type: 'User', id: user.id },
+    { totpUsed: user.totpEnabled },
+    request,
+  );
 
   return { status: 'ready', challengeToken: challenge.token };
 }
@@ -309,16 +290,13 @@ async function recordLoginFailure(
     }
   }
 
-  const orgId = await systemOrgId();
-  if (orgId) {
-    await auditAnonymous(
-      { userId, email, orgId },
-      'auth.login_failed',
-      { type: 'User', id: userId },
-      { reason },
-      request,
-    );
-  }
+  await auditAnonymous(
+    { userId, email },
+    'auth.login_failed',
+    { type: 'User', id: userId },
+    { reason },
+    request,
+  );
 }
 
 async function enforceLimit(
@@ -382,16 +360,13 @@ export async function verifyEmail(
   // Single use.
   await prisma.verificationToken.delete({ where: { id: row.id } });
 
-  const orgId = await systemOrgId();
-  if (orgId) {
-    await auditAnonymous(
-      { userId: user.id, email: user.email, orgId },
-      'auth.email_verified',
-      { type: 'User', id: user.id },
-      {},
-      request,
-    );
-  }
+  await auditAnonymous(
+    { userId: user.id, email: user.email },
+    'auth.email_verified',
+    { type: 'User', id: user.id },
+    {},
+    request,
+  );
 
   return { ok: true, email: user.email };
 }
@@ -437,16 +412,13 @@ export async function requestPasswordReset(
     },
   });
 
-  const orgId = await systemOrgId();
-  if (orgId) {
-    await auditAnonymous(
-      { userId: user.id, email, orgId },
-      'auth.password_reset_requested',
-      { type: 'User', id: user.id },
-      {},
-      request,
-    );
-  }
+  await auditAnonymous(
+    { userId: user.id, email },
+    'auth.password_reset_requested',
+    { type: 'User', id: user.id },
+    {},
+    request,
+  );
 
   return {
     ok: true,
@@ -518,16 +490,13 @@ export async function resetPassword(
   });
   await prisma.loginChallenge.deleteMany({ where: { userId: user.id, consumedAt: null } });
 
-  const orgId = await systemOrgId();
-  if (orgId) {
-    await auditAnonymous(
-      { userId: user.id, email: user.email, orgId },
-      'auth.password_reset_completed',
-      { type: 'User', id: user.id },
-      { sessionsRevoked: true },
-      request,
-    );
-  }
+  await auditAnonymous(
+    { userId: user.id, email: user.email },
+    'auth.password_reset_completed',
+    { type: 'User', id: user.id },
+    { sessionsRevoked: true },
+    request,
+  );
 
   return { ok: true };
 }
