@@ -732,11 +732,17 @@ model CorpusEntry {
   source          String
   notes           String?
   expectedSignals String[]    @default([])
+  /// SHA-256 of the exact tarball this entry labels. The only route to a
+  /// KNOWN_MALICIOUS verdict by assertion: the engine matches the artefact it
+  /// downloaded against these hashes rather than against a name and version,
+  /// because a name can be republished and a version can be re-tagged.
+  tarballSha256   String?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
   @@unique([ecosystem, packageName, version])
   @@index([label])
+  @@index([tarballSha256])
 }
 
 model EvalRun {
