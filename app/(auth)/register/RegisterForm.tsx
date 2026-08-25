@@ -4,7 +4,8 @@ import { useActionState, useState } from 'react';
 import Link from 'next/link';
 import { Loader2, MailCheck } from 'lucide-react';
 
-import { initialRegisterState, registerAction } from '@/app/(auth)/actions';
+import { registerAction } from '@/app/(auth)/actions';
+import { initialRegisterState } from '@/app/(auth)/form-states';
 import { PasswordStrength } from '@/app/(auth)/register/PasswordStrength';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';

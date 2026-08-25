@@ -162,7 +162,24 @@ export const SIGNAL_FAMILY_META: Record<SignalFamily, SignalFamilyMeta> = {
 export const SIGNAL_SEVERITIES = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO'] as const;
 export type SignalSeverity = (typeof SIGNAL_SEVERITIES)[number];
 
-export const CHART_COLORS = ['#3b82f6', '#14b8a6', '#f59e0b', '#f43f5e', '#a3a3a3'] as const;
+/**
+ * Categorical series colours, in fixed assignment order — never cycled, never
+ * reassigned when a filter changes the series count.
+ *
+ * Validated against both surfaces (#09090b dark, #ffffff light) for the
+ * lightness band, chroma floor, colour-vision separation (worst adjacent pair
+ * ΔE 12.5 protan, well above the 8 target) and 3:1 contrast. The verdict and
+ * signal-family palettes are *status* and *identity* colours respectively and
+ * are exempt from this ordering — they always ship with a text label, so colour
+ * is never the only channel.
+ */
+export const SERIES_COLORS = ['#3b82f6', '#0d9488', '#d97706'] as const;
+
+/** Series colour for "flagged" counts plotted beside a neutral total. */
+export const FLAGGED_SERIES_COLOR = '#ea580c';
+
+/** Recessive grid and axis ink for charts, matching the border token. */
+export const CHART_GRID_COLOR = 'var(--border)';
 
 /** Ordering helper: worst verdict first. */
 export function compareVerdicts(a: Verdict, b: Verdict): number {

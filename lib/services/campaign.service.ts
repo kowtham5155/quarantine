@@ -247,7 +247,7 @@ export function campaignFingerprint(
   type: IndicatorType,
   value: string,
 ): string {
-  return createHash('sha256').update(`${orgId} ${type} ${value}`).digest('hex');
+  return createHash('sha256').update(`${orgId}\u0000${type}\u0000${value}`).digest('hex');
 }
 
 const INDICATOR_LABELS: Record<IndicatorType, string> = {

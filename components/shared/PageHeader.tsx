@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 
 import {
   Breadcrumb,
@@ -46,17 +46,21 @@ export function PageHeader({
           <BreadcrumbList>
             {breadcrumbs.map((crumb, index) => {
               const isLast = index === breadcrumbs.length - 1;
+              // The separator is its own `<li role="presentation">`, so it is a
+              // sibling of the item rather than a child of it — an `<li>` inside
+              // an `<li>` is invalid markup and React reports it as a hydration
+              // error.
               return (
-                <BreadcrumbItem key={`${crumb.label}-${index}`}>
-                  {isLast || !crumb.href ? (
-                    <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
-                  ) : (
-                    <>
+                <Fragment key={`${crumb.label}-${index}`}>
+                  <BreadcrumbItem>
+                    {isLast || !crumb.href ? (
+                      <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                    ) : (
                       <BreadcrumbLink href={crumb.href}>{crumb.label}</BreadcrumbLink>
-                      <BreadcrumbSeparator />
-                    </>
-                  )}
-                </BreadcrumbItem>
+                    )}
+                  </BreadcrumbItem>
+                  {isLast ? null : <BreadcrumbSeparator />}
+                </Fragment>
               );
             })}
           </BreadcrumbList>

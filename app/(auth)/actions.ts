@@ -12,6 +12,12 @@ import { PASSWORD_SCORE_LABELS } from '@/lib/password-policy';
 import * as authService from '@/lib/services/auth.service';
 import * as orgService from '@/lib/services/org.service';
 import { getAuthContext } from '@/lib/auth-context';
+import type {
+  ForgotPasswordState,
+  LoginState,
+  PasswordScore,
+  RegisterState,
+} from '@/app/(auth)/form-states';
 
 /**
  * Server Actions for the unauthenticated auth flows.
@@ -40,13 +46,6 @@ function safeRedirect(target: string | undefined): string {
 // ---------------------------------------------------------------------------
 // Login
 // ---------------------------------------------------------------------------
-
-export interface LoginState extends FormState {
-  /** Which step the form should render next. */
-  step: 'password' | 'totp';
-}
-
-export const initialLoginState: LoginState = { status: 'idle', message: null, step: 'password' };
 
 export async function loginAction(_prev: LoginState, formData: FormData): Promise<LoginState> {
   const email = field(formData, 'email');
@@ -95,15 +94,6 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
 // Registration
 // ---------------------------------------------------------------------------
 
-export interface RegisterState extends FormState {
-  /** Set once registration succeeds so the page can show the "check your email" panel. */
-  registeredEmail?: string;
-  /** Non-production convenience link, mirroring the service's behaviour. */
-  verificationToken?: string;
-}
-
-export const initialRegisterState: RegisterState = { status: 'idle', message: null };
-
 export async function registerAction(
   _prev: RegisterState,
   formData: FormData,
@@ -124,13 +114,6 @@ export async function registerAction(
   } catch (error) {
     return toFormState(error);
   }
-}
-
-export interface PasswordScore {
-  score: number;
-  label: string;
-  warning: string | null;
-  suggestions: string[];
 }
 
 /**
@@ -165,12 +148,6 @@ export async function scorePasswordAction(
 // ---------------------------------------------------------------------------
 // Password reset
 // ---------------------------------------------------------------------------
-
-export interface ForgotPasswordState extends FormState {
-  resetToken?: string;
-}
-
-export const initialForgotPasswordState: ForgotPasswordState = { status: 'idle', message: null };
 
 export async function forgotPasswordAction(
   _prev: ForgotPasswordState,

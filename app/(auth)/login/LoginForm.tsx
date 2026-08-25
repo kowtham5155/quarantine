@@ -4,7 +4,8 @@ import { useActionState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { KeyRound, Loader2, ShieldCheck } from 'lucide-react';
 
-import { initialLoginState, loginAction } from '@/app/(auth)/actions';
+import { loginAction } from '@/app/(auth)/actions';
+import { initialLoginState } from '@/app/(auth)/form-states';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

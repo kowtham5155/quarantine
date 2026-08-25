@@ -3,7 +3,8 @@
 import { useEffect, useState, useTransition } from 'react';
 import { Check, X } from 'lucide-react';
 
-import { scorePasswordAction, type PasswordScore } from '@/app/(auth)/actions';
+import { scorePasswordAction } from '@/app/(auth)/actions';
+import type { PasswordScore } from '@/app/(auth)/form-states';
 import { MIN_PASSWORD_LENGTH, MIN_ZXCVBN_SCORE } from '@/lib/password-policy';
 import { cn } from '@/lib/utils';
 

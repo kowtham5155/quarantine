@@ -6,6 +6,7 @@ import { Ecosystem, ProjectSource, Role } from '@prisma/client';
 import { getAuthContext, requestFingerprint, requireSessionIdentity } from '@/lib/auth-context';
 import { field, optionalField, type FormState } from '@/lib/form-state';
 import { toFormState } from '@/lib/form-state.server';
+import { type InviteState } from '@/app/onboarding/form-states';
 import * as orgService from '@/lib/services/org.service';
 import * as projectService from '@/lib/services/project.service';
 
@@ -49,15 +50,6 @@ export async function createOrgAction(_prev: FormState, formData: FormData): Pro
 // ---------------------------------------------------------------------------
 // Step 2 — team
 // ---------------------------------------------------------------------------
-
-export interface InviteState extends FormState {
-  /** Invitations sent so far in this wizard, newest last. */
-  sent?: string[];
-  /** Non-production accept links, so the flow is testable without email. */
-  links?: Record<string, string>;
-}
-
-export const initialInviteState: InviteState = { status: 'idle', message: null };
 
 export async function inviteTeamAction(
   prev: InviteState,

@@ -1,7 +1,7 @@
 import { isIP } from 'node:net';
 import { lookup as dnsLookup } from 'node:dns/promises';
 import type { LookupFunction } from 'node:net';
-import { Agent } from 'undici';
+import { Agent, fetch as undiciFetch, type Response as UndiciResponse } from 'undici';
 
 import { ExternalServiceError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
@@ -146,9 +146,8 @@ export async function resolvePublicHost(hostname: string): Promise<ResolvedHost>
   // `URL.hostname` keeps the brackets on an IPv6 literal (`[::1]`), and `isIP`
   // does not accept them. Stripping them first is what stops a bracketed
   // literal from falling through to the DNS path unchecked.
-  const literal = hostname.startsWith('[') && hostname.endsWith(']')
-    ? hostname.slice(1, -1)
-    : hostname;
+  const literal =
+    hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
 
   const literalFamily = isIP(literal);
   if (literalFamily !== 0) {
@@ -235,7 +234,10 @@ function checkHostRate(hostname: string): void {
 
   const recent = (hostWindows.get(hostname) ?? []).filter((at) => at > cutoff);
   if (recent.length >= HOST_RATE_LIMIT) {
-    throw new ExternalServiceError(hostname, 'Rate limit for this host reached. Try again shortly.');
+    throw new ExternalServiceError(
+      hostname,
+      'Rate limit for this host reached. Try again shortly.',
+    );
   }
 
   recent.push(now);
@@ -263,7 +265,12 @@ export interface SafeFetchOptions {
 
 export interface SafeResponse {
   status: number;
-  headers: Headers;
+  /**
+   * Response headers. Typed as the read interface rather than the DOM `Headers`
+   * class, because the value comes from undici's fetch and only ever needs to be
+   * read — see the note on the dispatcher in `safeFetch`.
+   */
+  headers: Pick<Headers, 'get'>;
   body: Buffer;
   /** The URL actually fetched, after redirects. */
   finalUrl: string;
@@ -333,9 +340,19 @@ export async function safeFetch(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), remaining);
 
-    let response: Response;
+    // undici's own `fetch`, not the global one.
+    //
+    // The global `fetch` in Node is a *different copy* of undici, bundled into
+    // the runtime, and it validates a dispatcher against its own internal
+    // handler interface. Handing it an Agent constructed from the `undici`
+    // package fails at dispatch time with `invalid onRequestStart method`,
+    // which is how the whole registry layer stopped being reachable. Calling
+    // undici's fetch keeps the Agent and its pinned lookup in one
+    // implementation — and it also sidesteps Next's patched global fetch, which
+    // must never cache or dedupe the download of an untrusted archive.
+    let response: UndiciResponse;
     try {
-      response = await fetch(url, {
+      response = await undiciFetch(url, {
         method: 'GET',
         redirect: 'manual',
         signal: controller.signal,
@@ -346,7 +363,7 @@ export async function safeFetch(
           'accept-encoding': 'gzip, deflate',
         },
         dispatcher: agent,
-      } as RequestInit & { dispatcher: Agent });
+      });
     } catch (error) {
       clearTimeout(timer);
       await agent.close();
@@ -403,7 +420,11 @@ export async function safeFetch(
  * declared-small-but-actually-enormous response cannot exhaust memory before we
  * notice. A missing or lying content-length changes nothing.
  */
-async function readBounded(response: Response, maxBytes: number, hostname: string): Promise<Buffer> {
+async function readBounded(
+  response: UndiciResponse,
+  maxBytes: number,
+  hostname: string,
+): Promise<Buffer> {
   const declared = Number(response.headers.get('content-length') ?? '');
   if (Number.isFinite(declared) && declared > maxBytes) {
     throw new ExternalServiceError(hostname, 'Response is larger than the allowed size.');

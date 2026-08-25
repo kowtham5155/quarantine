@@ -7,7 +7,9 @@ import { AnalysisError, NotFoundError, ValidationError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { assertCan, Role, type AuthContext } from '@/lib/rbac';
 import { analyse, type ProgressEvent } from '@/lib/engine';
+import * as npmRegistry from '@/lib/engine/registry/npm';
 import { isValidNpmName, isValidVersion } from '@/lib/engine/registry/npm';
+import * as pypiRegistry from '@/lib/engine/registry/pypi';
 import { isValidPypiName } from '@/lib/engine/registry/pypi';
 import type { AnalysisResult, RuleDefinition, Signal } from '@/lib/engine/types';
 import { clusterAnalysis } from '@/lib/services/campaign.service';
@@ -74,6 +76,60 @@ export async function loadKnownBadHashes(): Promise<Set<string>> {
     if (entry.tarballSha256) hashes.add(entry.tarballSha256);
   }
   return hashes;
+}
+
+// ---------------------------------------------------------------------------
+// Version resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * Turn what a human typed into a concrete version.
+ *
+ * `lodash`, `lodash@latest` and `lodash@^4` all have to become an exact version
+ * before an Analysis row exists, because a verdict is a statement about one
+ * artefact and a range is not an artefact. npm dist-tags are resolved against
+ * the packument; PyPI has no tags, so its own idea of the current release is
+ * used. A range that is not a tag is rejected rather than guessed at.
+ */
+export async function resolveVersion(
+  ecosystem: Ecosystem,
+  name: string,
+  requested?: string | null,
+): Promise<string> {
+  const wanted = (requested ?? '').trim();
+
+  if (ecosystem === Ecosystem.NPM) {
+    if (wanted && isValidVersion(wanted) && !/^[~^><=*]/.test(wanted) && /^\d/.test(wanted)) {
+      return wanted;
+    }
+
+    const packument = await npmRegistry.fetchPackument(name);
+    const tag = wanted || 'latest';
+    const resolved = packument['dist-tags']?.[tag];
+
+    if (resolved) return resolved;
+    if (wanted && packument.versions?.[wanted]) return wanted;
+
+    throw new ValidationError(
+      wanted
+        ? 'That version or dist-tag was not found in the registry.'
+        : 'The registry lists no current version for that package.',
+      { details: { fieldErrors: { version: ['Not found in the registry.'] } } },
+    );
+  }
+
+  const document = await pypiRegistry.fetchPypiDocument(name);
+  if (wanted) {
+    if (document.releases && Object.hasOwn(document.releases, wanted)) return wanted;
+    throw new ValidationError('That version was not found on PyPI.', {
+      details: { fieldErrors: { version: ['Not found in the registry.'] } },
+    });
+  }
+
+  const latest = document.info?.version;
+  if (typeof latest === 'string' && latest.length > 0) return latest;
+
+  throw new ValidationError('PyPI lists no current version for that package.');
 }
 
 // ---------------------------------------------------------------------------
@@ -682,9 +738,9 @@ async function latestAnalysisFor(
 // ---------------------------------------------------------------------------
 
 /** Queued analyses across every org, oldest first. Used only by the cron sweep. */
-export async function claimQueuedAnalyses(limit: number): Promise<
-  Array<{ id: string; orgId: string }>
-> {
+export async function claimQueuedAnalyses(
+  limit: number,
+): Promise<Array<{ id: string; orgId: string }>> {
   return prisma.analysis.findMany({
     where: { status: AnalysisStatus.QUEUED },
     orderBy: { createdAt: 'asc' },

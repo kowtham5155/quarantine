@@ -61,12 +61,32 @@ function generateNonce(): string {
 }
 
 function buildContentSecurityPolicy(nonce: string): string {
-  // The dev server needs eval for React Refresh and inline styles for HMR.
-  // Production is nonce-only: no unsafe-inline, no unsafe-eval.
+  // The dev server needs eval for React Refresh. Production scripts are
+  // nonce-only: no unsafe-inline, no unsafe-eval.
   const scriptSrc = isDev
     ? `'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-eval'`
     : `'self' 'nonce-${nonce}' 'strict-dynamic'`;
-  const styleSrc = isDev ? `'self' 'nonce-${nonce}' 'unsafe-inline'` : `'self' 'nonce-${nonce}'`;
+
+  // Styles carry no nonce, deliberately.
+  //
+  // A nonce on `style-src` makes the browser ignore `'unsafe-inline'`, and that
+  // in turn blocks every inline *style attribute* — which a nonce cannot cover,
+  // because an attribute has nowhere to carry one. Every meter, risk bar and
+  // chart in this application sets a computed width that way, so a nonced
+  // style-src silently drops the visualisation layer: verified in a browser,
+  // where the console filled with "Applying inline style violates ... The
+  // action has been blocked".
+  //
+  // The alternatives are hashing every possible style attribute value (not
+  // possible for a width computed from data) or dropping the visualisations.
+  // So `style-src` allows inline styles and scripts do not: script-src keeps the
+  // nonce plus strict-dynamic, which is the directive that stops code
+  // execution. CSS injection needs an HTML injection point to land in, and
+  // there is none — no `dangerouslySetInnerHTML` exists in this codebase and
+  // package-derived strings are only ever rendered as text — while
+  // `default-src 'self'` with `img-src 'self' blob: data:` closes the usual
+  // CSS-based exfiltration channels.
+  const styleSrc = `'self' 'unsafe-inline'`;
   const connectSrc = isDev ? `'self' ws: http://localhost:*` : `'self'`;
 
   return [
