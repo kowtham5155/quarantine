@@ -32,6 +32,41 @@ function allowedOrigins(): Set<string> {
 }
 
 /**
+ * The origin this request was actually served on, as the proxy reports it.
+ *
+ * Comparing `Origin` against the host that served the request is the canonical
+ * same-origin test; comparing it only against configured URLs asks a second,
+ * different question — "is this the hostname an operator wrote down?" — and the
+ * two disagree the moment a deployment moves or gains a domain.
+ *
+ * That disagreement is silent in the worst way here. `auth.config.ts` sets
+ * `trustHost: true`, so Auth.js derives its origin from these same headers and
+ * signs users in happily under any hostname, while this check kept rejecting
+ * them. Sign-in worked and scanning 403'd, which points at everything except
+ * the actual cause.
+ *
+ * This trusts the forwarded headers exactly as far as `trustHost: true` already
+ * does — no further. Both rely on the platform proxy setting them, which Render
+ * and every comparable host do. The configured origins stay in the allowlist,
+ * so a deployment that names itself correctly is unaffected.
+ */
+function requestOrigin(request: Request): string | null {
+  const forwarded = request.headers.get('x-forwarded-host');
+  const host = (forwarded ?? request.headers.get('host'))?.split(',')[0]?.trim();
+  if (!host) return null;
+
+  const proto =
+    request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() ??
+    (env.NODE_ENV === 'production' ? 'https' : 'http');
+
+  try {
+    return new URL(`${proto}://${host}`).origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Reject a cross-site state-changing request.
  *
  * Cookie-authenticated mutations need this: `SameSite=Lax` stops a cross-site
@@ -55,8 +90,12 @@ export function requireSameOrigin(request: Request): void {
     throw new ForbiddenError('This request could not be verified as coming from the app.');
   }
 
-  if (!allowedOrigins().has(origin)) {
-    logger.warn({ origin }, 'cross-origin mutation rejected');
+  const allowed = allowedOrigins();
+  const self = requestOrigin(request);
+  if (self) allowed.add(self);
+
+  if (!allowed.has(origin)) {
+    logger.warn({ origin, expected: [...allowed] }, 'cross-origin mutation rejected');
     throw new ForbiddenError('This request could not be verified as coming from the app.');
   }
 }
