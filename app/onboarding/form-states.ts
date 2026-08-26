@@ -10,9 +10,12 @@ import type { FormState } from '@/lib/form-state';
  */
 
 export interface InviteState extends FormState {
-  /** Invitations sent so far in this wizard, newest last. */
-  sent?: string[];
-  /** Non-production accept links, so the flow is testable without email. */
+  /** Invitations created so far in this wizard, newest last. */
+  invited?: string[];
+  /**
+   * Accept link per invited address. Nothing is emailed anywhere, so handing
+   * this to the inviter is the only way an invitation can reach anyone.
+   */
   links?: Record<string, string>;
 }
 

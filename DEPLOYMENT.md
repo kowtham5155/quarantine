@@ -159,6 +159,8 @@ failing on the third request.
 `AUTH_URL` and `APP_URL` must match the origin the browser actually uses. A
 mismatch produces a login that appears to succeed and then bounces back to the
 login page, because the session cookie was issued for a different origin.
+`APP_URL` is also the origin baked into invitation links, so a wrong value hands
+your teammates a link that does not resolve.
 
 ---
 
@@ -193,10 +195,34 @@ step.** Registration creates the account and it is usable immediately — nothin
 is sent, and there is no link to click. Verification was removed rather than
 left in place issuing tokens no one could ever receive.
 
-Password reset does still depend on a delivered link, so it does not work here
-either; change a password by re-running the seed for the demo account, or by
-adding a mail provider (at which point reset works and verification can be
-reintroduced if you want it).
+### Anything that would have been an email
+
+Nothing in this deployment sends mail. There is no provider configured and no
+transport in the codebase, so every flow that would normally arrive in an inbox
+has to be handled another way:
+
+| Flow | What happens |
+| --- | --- |
+| Email verification | Removed. Accounts work immediately; there is nothing to click. |
+| Team invitations | The invite link is shown to the inviter, who sends it themselves. |
+| Password reset | Not available. See below. |
+
+**Invitations.** Onboarding step two creates the invitation and shows you the
+accept link with a copy button. Send it to the person yourself. Each link is
+single-use, expires in seven days, and only works for the address it was issued
+to. That step is the only place invitations can be created — there is no
+organisation settings area yet — but it stays reachable at
+`/onboarding?step=2` after setup, so you can return to it whenever.
+
+**Password reset genuinely does not work.** The reset link is deliberately never
+shown to whoever submits the form: they have proved nothing, and showing it
+would let anybody reset anybody's password. Without a mail provider there is no
+one to deliver it to. A user who forgets their password has no recovery path
+short of adding a mail provider — the demo account can be restored by re-running
+`scripts/seed-prod.ts`, but that only covers the demo account.
+
+Adding any mail provider makes password reset work as written, and email
+verification can be reintroduced if you want it.
 
 **There is no default credential in this repository, and no password written
 down anywhere in it.** A guessable default shipped to everyone who clones the

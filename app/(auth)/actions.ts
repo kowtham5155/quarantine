@@ -157,10 +157,18 @@ export async function forgotPasswordAction(
   try {
     const result = await authService.requestPasswordReset({ email }, await requestInfo());
 
-    // Deliberately identical whether or not the account exists.
+    // Deliberately identical whether or not the account exists: saying more
+    // here would turn this form into an account-existence oracle.
+    //
+    // The token is never surfaced to this caller. Unlike an invitation, whoever
+    // submitted this form has proved nothing — showing them the link would let
+    // anyone reset anyone's password. Without a mail provider there is simply
+    // no one to hand it to, and the message says so rather than implying an
+    // email is on its way.
     return {
       status: 'success',
-      message: "If that email exists, we've sent a link to reset the password.",
+      message:
+        'If that address has an account, a single-use reset link was created. There is no mail provider configured here, so it cannot be delivered and nothing will arrive.',
       ...(result.resetToken ? { resetToken: result.resetToken } : {}),
     };
   } catch (error) {

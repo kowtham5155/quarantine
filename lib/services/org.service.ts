@@ -327,8 +327,17 @@ export interface InviteMemberResult {
   email: string;
   role: Role;
   expiresAt: Date;
-  /** Non-production only, so the flow is testable without a mail provider. */
-  inviteToken?: string;
+  /**
+   * The single-use accept token, returned to the inviter every time.
+   *
+   * There is no mail transport here, so the inviter is the only party who can
+   * deliver the link. Returning it does not widen exposure: it goes to the
+   * authenticated caller who just created the invitation and holds
+   * `member:invite` — exactly the party a mail provider would have sent it on
+   * behalf of. Withholding it in production never made the invitation safer,
+   * it only made it impossible to accept.
+   */
+  inviteToken: string;
 }
 
 /**
@@ -395,10 +404,7 @@ export async function inviteMember(
     request,
   );
 
-  return {
-    ...invitation,
-    ...(process.env.NODE_ENV === 'production' ? {} : { inviteToken: token.token }),
-  };
+  return { ...invitation, inviteToken: token.token };
 }
 
 export interface InvitePreview {

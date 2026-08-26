@@ -2,7 +2,7 @@
 
 import { useActionState } from 'react';
 import Link from 'next/link';
-import { Loader2, MailCheck } from 'lucide-react';
+import { Loader2, MailX } from 'lucide-react';
 
 import { forgotPasswordAction } from '@/app/(auth)/actions';
 import { initialForgotPasswordState } from '@/app/(auth)/form-states';
@@ -21,8 +21,8 @@ export function ForgotPasswordForm() {
     return (
       <div className="space-y-5">
         <Alert>
-          <MailCheck aria-hidden="true" className="size-4" />
-          <AlertTitle>Check your email</AlertTitle>
+          <MailX aria-hidden="true" className="size-4" />
+          <AlertTitle>Reset link created, but not delivered</AlertTitle>
           <AlertDescription>{state.message}</AlertDescription>
         </Alert>
 

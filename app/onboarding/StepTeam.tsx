@@ -2,10 +2,11 @@
 
 import { useActionState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Loader2, MailCheck } from 'lucide-react';
+import { ArrowRight, Link2, Loader2 } from 'lucide-react';
 
 import { inviteTeamAction } from '@/app/onboarding/actions';
 import { initialInviteState } from '@/app/onboarding/form-states';
+import { CopyButton } from '@/components/shared/CopyButton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -32,7 +33,7 @@ export function StepTeam({ maxRole }: { maxRole: string }) {
     maxRole === 'OWNER' || maxRole === 'ADMIN' ? true : option.value === 'VIEWER',
   );
 
-  const sent = state.sent ?? [];
+  const invited = state.invited ?? [];
   const links = state.links ?? {};
 
   return (
@@ -40,15 +41,16 @@ export function StepTeam({ maxRole }: { maxRole: string }) {
       <form action={formAction} className="space-y-4" noValidate>
         {state.status === 'error' && state.message ? (
           <Alert variant="destructive" role="alert">
-            <AlertTitle>Could not send the invitation</AlertTitle>
+            <AlertTitle>Could not create the invitation</AlertTitle>
             <AlertDescription>{state.message}</AlertDescription>
           </Alert>
         ) : null}
 
         {state.status === 'success' && state.message ? (
           <Alert>
-            <MailCheck aria-hidden="true" className="size-4" />
-            <AlertTitle>{state.message}</AlertTitle>
+            <Link2 aria-hidden="true" className="size-4" />
+            <AlertTitle>Invitation created</AlertTitle>
+            <AlertDescription>{state.message}</AlertDescription>
           </Alert>
         ) : null}
 
@@ -92,28 +94,34 @@ export function StepTeam({ maxRole }: { maxRole: string }) {
 
         <Button type="submit" variant="outline" disabled={pending}>
           {pending ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : null}
-          Send invitation
+          Create invitation
         </Button>
       </form>
 
-      {sent.length > 0 ? (
-        <div className="space-y-2 rounded-md border border-border p-3">
-          <p className="text-sm font-medium">Invited</p>
-          <ul className="space-y-2">
-            {sent.map((email) => {
+      {invited.length > 0 ? (
+        <div className="space-y-3 rounded-md border border-border p-3">
+          <div>
+            <p className="text-sm font-medium">Invitation links</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Send each person their own link. Each one is single-use, expires in seven days, and
+              only works for the address it was issued to.
+            </p>
+          </div>
+          <ul className="space-y-3">
+            {invited.map((email) => {
               const link = links[email];
               return (
-                <li key={email} className="flex flex-wrap items-center gap-2 text-sm">
+                <li key={email} className="space-y-1.5">
                   <Badge variant="secondary" className="font-mono text-xs">
                     {email}
                   </Badge>
                   {link ? (
-                    <Link
-                      href={link}
-                      className="font-mono text-xs break-all text-primary underline underline-offset-4"
-                    >
-                      {link}
-                    </Link>
+                    <div className="flex items-start gap-1">
+                      <code className="min-w-0 flex-1 rounded bg-muted px-2 py-1.5 font-mono text-xs break-all">
+                        {link}
+                      </code>
+                      <CopyButton value={link} label="Copy invitation link" />
+                    </div>
                   ) : null}
                 </li>
               );

@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { Ecosystem, ProjectSource, Role } from '@prisma/client';
 
 import { getAuthContext, requestFingerprint, requireSessionIdentity } from '@/lib/auth-context';
+import { env } from '@/lib/env';
 import { field, optionalField, type FormState } from '@/lib/form-state';
 import { toFormState } from '@/lib/form-state.server';
 import { type InviteState } from '@/app/onboarding/form-states';
@@ -65,20 +66,24 @@ export async function inviteTeamAction(
   try {
     const invite = await orgService.inviteMember(ctx, { email, role }, await requestFingerprint());
 
-    const sent = [...(prev.sent ?? []), invite.email];
-    const links = { ...(prev.links ?? {}) };
-    if (invite.inviteToken) links[invite.email] = `/accept-invite/${invite.inviteToken}`;
+    // Absolute, because the inviter has to paste this somewhere else entirely.
+    const origin = env.APP_URL.replace(/\/+$/, '');
+    const invited = [...(prev.invited ?? []), invite.email];
+    const links = {
+      ...(prev.links ?? {}),
+      [invite.email]: `${origin}/accept-invite/${invite.inviteToken}`,
+    };
 
     return {
       status: 'success',
-      message: `Invitation sent to ${invite.email}.`,
-      sent,
+      message: `Invitation created for ${invite.email}. Nothing was emailed — send them the link below yourself.`,
+      invited,
       links,
     };
   } catch (error) {
     return {
       ...toFormState(error),
-      ...(prev.sent ? { sent: prev.sent } : {}),
+      ...(prev.invited ? { invited: prev.invited } : {}),
       ...(prev.links ? { links: prev.links } : {}),
     };
   }

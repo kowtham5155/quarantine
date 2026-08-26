@@ -14,7 +14,8 @@ export default function ForgotPasswordPage() {
       <CardHeader className="gap-1">
         <CardTitle className="text-xl">Reset your password</CardTitle>
         <CardDescription>
-          Enter your email and we will send a single-use link, valid for one hour.
+          A reset link can only reach you by email, and this deployment has no mail provider
+          configured — so nothing can be delivered. Adding one makes this work as it stands.
         </CardDescription>
       </CardHeader>
       <CardContent>

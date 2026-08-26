@@ -53,7 +53,7 @@ export default async function OnboardingPage({
       <Wizard
         step={2}
         title="Invite your team"
-        description="Everyone who reviews a verdict or approves an exception needs an account. You can do this later from Settings."
+        description={TEAM_DESCRIPTION}
       >
         <StepTeam maxRole={ctx.role} />
       </Wizard>
@@ -70,6 +70,12 @@ export default async function OnboardingPage({
     </Wizard>
   );
 }
+
+// There is no organisation Settings area yet, so this step is the only place an
+// invitation can be created. It stays reachable after setup, which is where
+// people are sent rather than to a Settings page that does not exist.
+const TEAM_DESCRIPTION =
+  'Everyone who reviews a verdict or approves an exception needs an account. Nothing is emailed — you get a link to send them yourself. Come back to /onboarding?step=2 whenever you want to invite somebody else.';
 
 const ORG_DESCRIPTION =
   'Everything in Quarantine belongs to an organisation: projects, policies, verdicts and the audit log.';
