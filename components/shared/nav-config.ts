@@ -1,22 +1,14 @@
 import {
   Activity,
   BookLock,
-  Boxes,
-  FileSearch,
-  FlaskConical,
   Gauge,
-  KeyRound,
   Layers,
   type LucideIcon,
-  Network,
   Package,
   Radar,
-  ScrollText,
-  Settings,
   ShieldAlert,
   ShieldCheck,
   Siren,
-  Webhook,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -34,8 +26,18 @@ export interface NavSection {
 }
 
 /**
- * Application navigation. The order mirrors the workflow: scan something, look
- * at what came back, govern it, then investigate ecosystem-wide.
+ * Application navigation.
+ *
+ * The order mirrors the workflow: scan something, look at what came back, then
+ * govern it.
+ *
+ * Every entry here must resolve to a route that exists. Next prefetches each
+ * link in the viewport, so an entry pointing at an unbuilt route fires a 404 on
+ * page load before anybody clicks anything — and when someone does click, a
+ * demo turns into a broken link. The intelligence and integration surfaces
+ * (feed, campaigns, corpus, rules, API keys, webhooks) are deliberately out of
+ * scope for this build and are therefore not linked. Settings rejoins this list
+ * when its pages exist, not before.
  */
 export const NAV_SECTIONS: NavSection[] = [
   {
@@ -90,45 +92,6 @@ export const NAV_SECTIONS: NavSection[] = [
       },
       { label: 'Exceptions', href: '/exceptions', icon: BookLock, description: 'Time-boxed' },
     ],
-  },
-  {
-    label: 'Intelligence',
-    items: [
-      { label: 'Feed', href: '/feed', icon: Network, description: 'Newly flagged, 24h' },
-      {
-        label: 'Campaigns',
-        href: '/campaigns',
-        icon: Boxes,
-        matchPrefix: true,
-        description: 'Clustered families',
-      },
-      {
-        label: 'Corpus',
-        href: '/corpus',
-        icon: FlaskConical,
-        matchPrefix: true,
-        description: 'Labelled evaluation set',
-      },
-      {
-        label: 'Rules',
-        href: '/rules',
-        icon: ScrollText,
-        matchPrefix: true,
-        description: 'Catalogue and weights',
-      },
-    ],
-  },
-  {
-    label: 'Integrations',
-    items: [
-      { label: 'Overview', href: '/integrations', icon: FileSearch },
-      { label: 'API keys', href: '/integrations/api-keys', icon: KeyRound },
-      { label: 'Webhooks', href: '/integrations/webhooks', icon: Webhook },
-    ],
-  },
-  {
-    label: 'Organisation',
-    items: [{ label: 'Settings', href: '/settings', icon: Settings, matchPrefix: true }],
   },
 ];
 

@@ -288,6 +288,7 @@ export async function analyse(options: AnalyseOptions): Promise<AnalysisResult> 
       families: results,
       incompleteStages,
       tarballSha256: downloaded.sha256,
+      filesExtracted: extraction.files.length,
       // Recorded so the report can name the tree the diff was taken against.
       // A MATCH nobody can attribute to a specific tag is not evidence.
       comparedRef:

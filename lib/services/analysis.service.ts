@@ -447,7 +447,9 @@ async function persistResult(
         durationMs: result.durationMs,
         engineVersion: ENGINE_VERSION,
         signalCounts: signalCounts as Prisma.InputJsonValue,
-        filesAnalysed: result.signals.length > 0 ? countFiles(result.signals) : 0,
+        // Files the extractor produced, not files that happened to fire a rule:
+        // the report presents this as the size of the archive it read.
+        filesAnalysed: result.filesExtracted,
       },
     });
 
@@ -473,7 +475,7 @@ async function persistResult(
       where: { id: packageVersionId },
       data: {
         hasInstallScripts: fired.some((signal) => signal.ruleId === 'Q-INS-001'),
-        fileCount: countFiles(result.signals),
+        fileCount: result.filesExtracted,
         unpackedSize: facts.unpackedSize,
         provenanceAttested: facts.hasProvenanceAttestation,
         ...(facts.publishedAt ? { publishedAt: facts.publishedAt } : {}),
@@ -509,16 +511,6 @@ async function persistResult(
 }
 
 /** Distinct files mentioned in any evidence, as a rough "files analysed" count. */
-function countFiles(signals: Signal[]): number {
-  const files = new Set<string>();
-  for (const signal of signals) {
-    for (const item of signal.evidence) {
-      if (item.file) files.add(item.file);
-    }
-  }
-  return files.size;
-}
-
 /** One SignalHit row per piece of evidence, or one bare row when there is none. */
 function toSignalHitRows(
   analysisId: string,

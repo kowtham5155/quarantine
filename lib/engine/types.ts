@@ -294,6 +294,15 @@ export interface AnalysisResult {
   incompleteStages: string[];
   tarballSha256: string | null;
   /**
+   * How many files the bounded extractor produced from the archive.
+   *
+   * The number of files *analysed*, which is not the same as the number that
+   * ended up with evidence attached — most files in a healthy package fire
+   * nothing at all. Reporting the second as the first understates coverage by
+   * an order of magnitude on any real package.
+   */
+  filesExtracted: number;
+  /**
    * What the provenance family actually diffed against, when it got that far.
    * Null when no repository was declared, it could not be read, or no tag
    * matched — the three cases the ProvenanceCheck status distinguishes.
