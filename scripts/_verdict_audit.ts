@@ -4,7 +4,6 @@ import {
   computeConfidence,
   computeScore,
   decideVerdict,
-  evaluateHardTriggers,
 } from '../lib/engine/verdict';
 import { VERDICT_THRESHOLDS } from '../lib/engine/thresholds';
 import { SEED_RULES } from '../prisma/seed-data/rules';
@@ -32,27 +31,32 @@ console.log('\n### 5b. each hard trigger alone -> at least LIKELY_MALICIOUS?');
 for (const trigger of HARD_TRIGGERS) {
   // Find the minimal fired-set that satisfies this trigger by brute force over its rules.
   const candidates = SEED_RULES.map((r) => r.ruleId);
-  let found: string[] | null = null;
   const tryset = (ids: string[]) => {
     const s = new Set(ids);
     return HARD_TRIGGERS.filter((t) => t.test(s)).map((t) => t.id);
   };
-  outer: for (let n = 1; n <= 3 && !found; n++) {
-    const combo = (start: number, acc: string[]): boolean => {
-      if (acc.length === n) {
-        const hits = tryset(acc);
-        if (hits.includes(trigger.id)) { found = [...acc]; return true; }
-        return false;
-      }
-      for (let i = start; i < candidates.length; i++) {
-        if (combo(i + 1, [...acc, candidates[i]!])) return true;
-      }
-      return false;
-    };
-    if (combo(0, [])) break outer;
+  // Returns the match rather than assigning to an outer `let`: TypeScript does
+  // not narrow a variable written inside a closure, so the old version left the
+  // result typed `never` and would not compile.
+  const combo = (start: number, acc: string[], n: number): string[] | null => {
+    if (acc.length === n) {
+      return tryset(acc).includes(trigger.id) ? [...acc] : null;
+    }
+    for (let i = start; i < candidates.length; i++) {
+      const hit = combo(i + 1, [...acc, candidates[i]!], n);
+      if (hit) return hit;
+    }
+    return null;
+  };
+
+  let match: string[] | null = null;
+  for (let n = 1; n <= 3 && !match; n++) {
+    match = combo(0, [], n);
   }
-  if (!found) { console.log(`   ${trigger.id}: NO SATISFYING RULE SET FOUND (dead trigger?)`); continue; }
-  const signals = SEED_RULES.map((r) => sig(r.ruleId, found!.includes(r.ruleId)));
+
+  if (!match) { console.log(`   ${trigger.id}: NO SATISFYING RULE SET FOUND (dead trigger?)`); continue; }
+  const found = match;
+  const signals = SEED_RULES.map((r) => sig(r.ruleId, found.includes(r.ruleId)));
   const out = decideVerdict({ signals, rules, incompleteStages: [] });
   const ok = ['LIKELY_MALICIOUS', 'KNOWN_MALICIOUS'].includes(out.verdict);
   console.log(`   ${ok ? 'ok   ' : 'FAIL '} ${trigger.id}: fired=${found.join('+')} -> ${out.verdict} score=${out.weightedScore.toFixed(1)} decidedBy=${out.decidedBy}`);
