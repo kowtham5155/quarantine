@@ -86,6 +86,27 @@ describe('isBlockedAddress — IPv6', () => {
     expect(isBlockedAddress('2606:4700:4700::1111')).toBe(false);
     expect(isBlockedAddress('2001:4860:4860::8888')).toBe(false);
   });
+
+  /**
+   * A transition address is judged by the IPv4 it carries, not by its prefix.
+   * On a NAT64-only network a DNS64 resolver synthesises `64:ff9b::` records
+   * for every name, GitHub's included — blanket-blocking the prefix takes the
+   * provenance check offline on a network that is behaving normally.
+   */
+  it('allows an embedded IPv4 address that is itself public', () => {
+    expect(isBlockedAddress('64:ff9b::14cf:4955')).toBe(false); // 20.207.73.85, api.github.com
+    expect(isBlockedAddress('64:ff9b::b9c7:6c85')).toBe(false); // 185.199.108.133
+    expect(isBlockedAddress('2002:8bc7:6c85::1')).toBe(false); // 6to4 over 139.199.108.133
+    expect(isBlockedAddress('::ffff:8.8.8.8')).toBe(false);
+  });
+
+  it('still refuses an embedded IPv4 address that is private', () => {
+    expect(isBlockedAddress('64:ff9b::a9fe:a9fe')).toBe(true); // 169.254.169.254, metadata
+    expect(isBlockedAddress('64:ff9b::c0a8:1')).toBe(true); // 192.168.0.1
+    expect(isBlockedAddress('64:ff9b::a00:1')).toBe(true); // 10.0.0.1
+    expect(isBlockedAddress('2002:ac10:1::1')).toBe(true); // 6to4 over 172.16.0.1
+    expect(isBlockedAddress('::ffff:169.254.169.254')).toBe(true);
+  });
 });
 
 describe('isBlockedAddress — non-addresses', () => {

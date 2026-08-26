@@ -95,22 +95,94 @@ function isBlockedIpv4(address: string): boolean {
   return false;
 }
 
+/** The eight 16-bit groups of an IPv6 address, or null if it will not parse. */
+function ipv6Groups(address: string): number[] | null {
+  const [head = '', tail] = address.split('::');
+  if (tail !== undefined && address.split('::').length > 2) return null;
+
+  const parse = (part: string): number[] | null => {
+    if (part === '') return [];
+    const out: number[] = [];
+    for (const group of part.split(':')) {
+      if (!/^[0-9a-f]{1,4}$/.test(group)) return null;
+      out.push(Number.parseInt(group, 16));
+    }
+    return out;
+  };
+
+  const left = parse(head);
+  const right = tail === undefined ? [] : parse(tail);
+  if (left === null || right === null) return null;
+
+  if (tail === undefined) return left.length === 8 ? left : null;
+
+  const missing = 8 - left.length - right.length;
+  if (missing < 0) return null;
+  return [...left, ...Array.from({ length: missing }, () => 0), ...right];
+}
+
+/** Dotted-quad for a 32-bit value carried in two IPv6 groups. */
+function ipv4FromGroups(high: number, low: number): string {
+  return [high >> 8, high & 0xff, low >> 8, low & 0xff].join('.');
+}
+
+/**
+ * An IPv4 address embedded in an IPv6 one, for the transition mechanisms that
+ * carry one inside the other. Returns null when this address embeds nothing.
+ *
+ * These are decoded rather than blanket-blocked. Blocking the whole prefix is
+ * safe but wrong in a way that matters: a DNS64 resolver — which is what a
+ * NAT64-only network gives you, and what this repository's own sandbox runs —
+ * synthesises `64:ff9b::` records for *every* name, including GitHub's. Refuse
+ * the prefix outright and every git host on the internet becomes unreachable,
+ * which is how the provenance check ended up looking broken. Decoding gives the
+ * real answer: `64:ff9b::14cf:4955` is GitHub at 20.207.73.85 and is allowed,
+ * while `64:ff9b::a9fe:a9fe` is the cloud metadata service at 169.254.169.254
+ * and is still refused, by the same IPv4 rules as everything else.
+ */
+function embeddedIpv4(normalised: string): string | null {
+  // ::ffff:127.0.0.1 and ::127.0.0.1 spell the v4 address out.
+  const dotted = /^::(?:ffff:)?(\d{1,3}(?:\.\d{1,3}){3})$/.exec(normalised);
+  if (dotted?.[1]) return dotted[1];
+
+  const groups = ipv6Groups(normalised);
+  if (!groups) return null;
+
+  // ::ffff:0:0/96 — IPv4-mapped, written in hex.
+  if (
+    groups[0] === 0 &&
+    groups[1] === 0 &&
+    groups[2] === 0 &&
+    groups[3] === 0 &&
+    groups[4] === 0 &&
+    groups[5] === 0xffff
+  ) {
+    return ipv4FromGroups(groups[6] ?? 0, groups[7] ?? 0);
+  }
+
+  // 64:ff9b::/96 — the well-known NAT64 prefix (RFC 6052).
+  if (groups[0] === 0x64 && groups[1] === 0xff9b && groups.slice(2, 6).every((g) => g === 0)) {
+    return ipv4FromGroups(groups[6] ?? 0, groups[7] ?? 0);
+  }
+
+  // 2002::/16 — 6to4 carries the v4 address in the next 32 bits.
+  if (groups[0] === 0x2002) return ipv4FromGroups(groups[1] ?? 0, groups[2] ?? 0);
+
+  return null;
+}
+
 function isBlockedIpv6(address: string): boolean {
   const normalised = address.toLowerCase().split('%')[0] ?? '';
 
-  // An IPv4-mapped or IPv4-compatible address is only as safe as the IPv4
+  // An address that carries an IPv4 one is exactly as safe as the address
   // inside it — ::ffff:127.0.0.1 reaches loopback just fine.
-  const mapped = /^::(?:ffff:)?(\d{1,3}(?:\.\d{1,3}){3})$/.exec(normalised);
-  if (mapped?.[1]) return isBlockedIpv4(mapped[1]);
+  const embedded = embeddedIpv4(normalised);
+  if (embedded !== null) return isBlockedIpv4(embedded);
 
   if (normalised === '::' || normalised === '::1') return true; // unspecified, loopback
   if (normalised.startsWith('fe80')) return true; // link-local
   if (/^f[cd]/.test(normalised)) return true; // fc00::/7 unique local
   if (normalised.startsWith('ff')) return true; // multicast
-  // 64:ff9b::/96 is NAT64 and can be pointed at private v4 space.
-  if (normalised.startsWith('64:ff9b')) return true;
-  // 2002::/16 (6to4) embeds a v4 address in the next 32 bits.
-  if (normalised.startsWith('2002:')) return true;
 
   return false;
 }

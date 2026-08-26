@@ -561,9 +561,25 @@ function toProvenanceRow(
   if (provenanceSignals.length === 0) return null;
 
   const noRepo = provenanceSignals.find((s) => s.ruleId === 'Q-PRV-001')?.fired;
-  const unreachable = provenanceSignals.find((s) => s.ruleId === 'Q-PRV-002')?.fired;
+
+  // Q-PRV-002 covers two different facts: the repository could not be read, and
+  // the repository is archived while the package still publishes. Only the
+  // first one stops the comparison. Reporting an archived repository as
+  // REPO_UNREACHABLE threw away a completed diff — left-pad@1.3.0 compared
+  // clean against an archived repo and still displayed as unchecked.
+  const repoSignal = provenanceSignals.find((s) => s.ruleId === 'Q-PRV-002');
+  const comparisonRan = provenanceSignals.some(
+    (s) => (s.ruleId === 'Q-PRV-003' || s.ruleId === 'Q-PRV-004') && s.skipped === undefined,
+  );
+  const unreachable = repoSignal?.fired === true && !comparisonRan;
   const extras = provenanceSignals.find((s) => s.ruleId === 'Q-PRV-003');
   const modified = provenanceSignals.find((s) => s.ruleId === 'Q-PRV-004');
+
+  // A comparison that could not conclude must not be recorded as a clean one.
+  // Built output differs from its source tree by construction, so DIVERGENT is
+  // the truthful status; `diffSummary.unverifiable` is what lets the report say
+  // why, rather than implying the difference is suspicious.
+  const builtOutput = extras?.skipped === 'BUILD_OUTPUT';
 
   const status = noRepo
     ? 'NO_REPO'
@@ -571,13 +587,17 @@ function toProvenanceRow(
       ? 'REPO_UNREACHABLE'
       : extras?.skipped === 'NO_TAG_MATCH' || modified?.skipped === 'NO_TAG_MATCH'
         ? 'NO_TAG'
-        : extras?.fired || modified?.fired
+        : builtOutput || extras?.fired || modified?.fired
           ? 'DIVERGENT'
           : 'MATCH';
 
   return {
     analysis: { connect: { id: analysisId } },
     status,
+    // Null unless the comparison actually ran: naming a tag we never fetched
+    // would make a REPO_UNREACHABLE row look like a checked one.
+    repoUrl: result.comparedRef?.repositoryUrl ?? result.catalogue.repositoryUrl,
+    gitRef: result.comparedRef?.tag ?? null,
     filesOnlyInTarball: (extras?.evidence ?? [])
       .map((item) => item.file)
       .filter((path): path is string => Boolean(path))
@@ -589,6 +609,8 @@ function toProvenanceRow(
     diffSummary: {
       extraFiles: extras?.evidence.length ?? 0,
       modifiedFiles: modified?.evidence.length ?? 0,
+      ...(result.comparedRef ? { filesInRepo: result.comparedRef.filesInRepo } : {}),
+      ...(builtOutput ? { unverifiable: 'BUILD_OUTPUT' } : {}),
     } as Prisma.InputJsonValue,
   };
 }

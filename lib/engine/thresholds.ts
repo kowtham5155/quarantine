@@ -289,6 +289,22 @@ export const CADENCE_MIN_RELEASES = 5;
 export const PROVENANCE_EXTRA_FILE_TOLERANCE = 2;
 
 /**
+ * When most of the runnable files in a tarball are absent from the source tree,
+ * the package is published from a build rather than tampered with.
+ *
+ * lodash@4.17.21 is the case that forced this: its tag tree holds 148 files and
+ * its published tarball holds over a thousand, because the per-method modules
+ * are generated at release. Treating that as the event-stream signature scores
+ * one of the most-downloaded packages on npm as LIKELY_MALICIOUS. The injected
+ * file that Q-PRV-003 exists to catch looks nothing like it — event-stream's
+ * tarball corresponded to its repository except for a handful of extra files.
+ */
+export const PROVENANCE_BUILD_OUTPUT_SHARE = 0.5;
+
+/** At or below this many extra runnable files, scale cannot excuse them. */
+export const PROVENANCE_INJECTED_FILE_MAX = 5;
+
+/**
  * Fraction of compared files that may differ in content before the trees are
  * called divergent — Q-PRV-004. Line-ending and banner-comment differences
  * survive normalisation more often than one would like.

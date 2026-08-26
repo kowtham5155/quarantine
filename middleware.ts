@@ -40,6 +40,7 @@ const PUBLIC_PREFIXES = [
 const SELF_AUTHENTICATING_API_PREFIXES = [
   '/api/auth',
   '/api/cron',
+  '/api/diagnostics', // Bearer CRON_SECRET; temporary, see the route's own note.
   '/api/webhooks',
   '/api/v1',
   '/api/health',

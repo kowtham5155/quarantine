@@ -106,7 +106,20 @@ export default async function ProvenancePage({ params }: PageProps) {
     );
   }
 
-  const copy = STATUS_COPY[provenance.status] ?? STATUS_COPY.NO_REPO;
+  // A DIVERGENT row that only diverges because the package ships built output
+  // is not the event-stream signature and must not be dressed as it. The engine
+  // records why it could not conclude; the page reads it back rather than
+  // guessing from the file counts.
+  const builtOutput = provenance.diffSummary.unverifiable === 'BUILD_OUTPUT';
+
+  const copy = builtOutput
+    ? {
+        title: 'Published from a build — not directly comparable',
+        detail:
+          'Most of the runnable files in this archive are absent from the source tree, which is what a built package looks like: the published artefact is generated from the source rather than copied from it. A file-by-file comparison cannot separate ordinary build output from an injected file here, so this check is reported as inconclusive rather than as a match or an accusation. The other five families still read every file in the archive.',
+        tone: 'unknown' as const,
+      }
+    : (STATUS_COPY[provenance.status] ?? STATUS_COPY.NO_REPO);
   const toneClass =
     copy?.tone === 'bad'
       ? 'border-verdict-likely-malicious-accent/40 bg-verdict-likely-malicious-surface text-verdict-likely-malicious-accent'

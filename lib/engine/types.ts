@@ -92,6 +92,12 @@ export type SkipReason =
   | 'NO_DOWNLOAD_DATA'
   | 'UNPARSEABLE'
   | 'BUDGET_EXHAUSTED'
+  /**
+   * The published tarball is built output, so comparing it to the source tree
+   * file-by-file cannot conclude anything. Distinct from a clean match: nothing
+   * was verified, and the report has to say so rather than imply it was.
+   */
+  | 'BUILD_OUTPUT'
   | 'NOT_APPLICABLE';
 
 /** A rule as the engine needs it: catalogue metadata plus its weight. */
@@ -287,6 +293,12 @@ export interface AnalysisResult {
   /** Families that failed or were skipped, feeding the incompleteness penalty. */
   incompleteStages: string[];
   tarballSha256: string | null;
+  /**
+   * What the provenance family actually diffed against, when it got that far.
+   * Null when no repository was declared, it could not be read, or no tag
+   * matched — the three cases the ProvenanceCheck status distinguishes.
+   */
+  comparedRef: { repositoryUrl: string; tag: string; filesInRepo: number } | null;
   /** Registry metadata the catalogue keeps after the scan directory is gone. */
   catalogue: CatalogueFacts;
   durationMs: number;

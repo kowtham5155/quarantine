@@ -2,7 +2,9 @@ import { createHash } from 'node:crypto';
 
 import {
   BINARY_BLOB_MIN_BYTES,
+  PROVENANCE_BUILD_OUTPUT_SHARE,
   PROVENANCE_EXTRA_FILE_TOLERANCE,
+  PROVENANCE_INJECTED_FILE_MAX,
   PROVENANCE_MODIFIED_RATIO,
 } from '@/lib/engine/thresholds';
 import type { AnalysisContext, FamilyResult, RepositorySnapshot } from '@/lib/engine/types';
@@ -148,6 +150,36 @@ export function compareTrees(
   };
 }
 
+/**
+ * Does this source tree build something?
+ *
+ * A repository with a build system is expected to publish files it does not
+ * itself contain — that is what a build is. Without one, a runnable file in the
+ * tarball that the repository has never seen is unexplained, which is the
+ * event-stream signature Q-PRV-003 exists to catch: `flatmap-stream` was plain
+ * JavaScript published from a plain JavaScript repository, with one file added
+ * on the way out.
+ *
+ * Deliberately generous. A false "yes" here downgrades one rule to inconclusive
+ * and leaves the other five families reading every byte of the file; a false
+ * "no" calls a legitimate publisher malicious on the strength of their
+ * toolchain. Those costs are not symmetric.
+ */
+function repositoryDeclaresBuild(sourceFiles: Map<string, string>): boolean {
+  const BUILD_MANIFESTS =
+    /^(?:[^/]+\/)?(?:tsconfig(?:\..+)?\.json|(?:rollup|webpack|vite|esbuild|babel|gulpfile|Gruntfile|snowpack|parcel|tsup|unbuild|rspack)\.config\.[cm]?[jt]s|gulpfile\.[cm]?js|Makefile|go\.mod|Cargo\.toml|\.babelrc(?:\..+)?|build\.[cm]?[jt]s)$/i;
+
+  for (const path of sourceFiles.keys()) {
+    if (BUILD_MANIFESTS.test(path)) return true;
+
+    // A TypeScript or JSX source tree publishes compiled JavaScript by
+    // definition; type declarations alone do not count.
+    if (/\.(?:tsx?|jsx|svelte|vue)$/i.test(path) && !/\.d\.ts$/i.test(path)) return true;
+  }
+
+  return false;
+}
+
 /** Candidate git tags for a version, in the order they should be tried. */
 export function candidateTags(version: string): string[] {
   const bare = version.replace(/^v/, '');
@@ -224,7 +256,45 @@ export async function analyseProvenance(context: AnalysisContext): Promise<Famil
       const extras = comparison.onlyInTarball;
       const executables = comparison.executableOnlyInTarball;
 
-      if (executables.length > 0) {
+      /*
+       * Is this a tampered tarball, or a built one?
+       *
+       * Both put runnable files in the package that the repository does not
+       * have, and the difference is scale and proportion. An injected dropper
+       * arrives in a tree that otherwise corresponds to its source — that is
+       * what event-stream looked like. A built package barely corresponds at
+       * all: lodash ships 148 repository files as more than a thousand
+       * generated modules, and reading that as an attack scores a package with
+       * fifty million weekly downloads as likely malicious.
+       *
+       * The honest limitation: a build whose output is *also* tampered with
+       * lands in the lower-confidence branch, because comparing built output
+       * against source cannot separate the two without reproducing the build.
+       * The other five families still see the file, and Q-PRV-004 still reads
+       * every file the two trees share.
+       */
+      const corresponding = comparison.identical.length + comparison.modified.length;
+      const extraShare = executables.length / Math.max(1, executables.length + corresponding);
+
+      // Two ways to recognise a build. The repository saying so is the strong
+      // one and works at any size: esbuild ships two runnable files, both
+      // generated from TypeScript that is in the repository, and no ratio test
+      // can see that. Scale is the fallback for a project whose build system is
+      // not one this list knows.
+      const looksBuilt =
+        repositoryDeclaresBuild(repository.files) ||
+        (corresponding > 0 &&
+          executables.length > PROVENANCE_INJECTED_FILE_MAX &&
+          extraShare > PROVENANCE_BUILD_OUTPUT_SHARE);
+
+      if (executables.length > 0 && looksBuilt) {
+        // Skipped, not fired. Q-PRV-003 is a hard trigger on its own — it is
+        // the event-stream signature, and one fire is enough to reach LIKELY
+        // MALICIOUS by design. Firing it at low confidence would not help:
+        // the trigger reads whether the rule fired, not how sure it was. The
+        // honest report is that this comparison could not conclude.
+        builder.skip('Q-PRV-003', 'BUILD_OUTPUT');
+      } else if (executables.length > 0) {
         mark('Q-PRV-003');
         builder.fire(
           'Q-PRV-003',
