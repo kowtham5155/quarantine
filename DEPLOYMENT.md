@@ -89,6 +89,9 @@ failing on the third request.
 | `NODE_ENV`              | yes                  | `production`                                                              |
 | `NODE_VERSION`          | yes                  | `20` (the app requires ≥ 20.11)                                           |
 | `PLATFORM_ADMIN_EMAILS` | no                   | Comma-separated emails allowed into `/admin`. Empty closes it to everyone |
+| `SEED_DEMO_ACCOUNT`     | no                   | `true` to seed a read-only demo account — see §4                          |
+| `DEMO_PASSWORD`         | with the above       | Password for that account. Never committed; checked against the policy    |
+| `DEMO_EMAIL`            | no                   | Defaults to `demo@quarantine.dev`                                         |
 | `LOG_LEVEL`             | no                   | `info` by default                                                         |
 
 `AUTH_URL` and `APP_URL` must match the origin the browser actually uses. A
@@ -123,8 +126,41 @@ development seed and it begins by truncating every table.
 Register it at `/register`. That creates the account, its organisation, and
 makes the user the organisation's owner.
 
-No default credentials are seeded, deliberately. This deployment has a public
-URL, and a known email and password on a public URL is not a demo convenience.
+**There is no default credential in this repository, and no password written
+down anywhere in it.** A guessable default shipped to everyone who clones the
+project is a vulnerability in every deployment at once.
+
+### Optional: a read-only demo account
+
+For a deployment you intend to hand out a login for, set these before running
+the seed:
+
+```bash
+SEED_DEMO_ACCOUNT=true DEMO_PASSWORD='<a strong password you choose for this instance>' npx tsx scripts/seed-prod.ts
+```
+
+Optionally `DEMO_EMAIL` to override the default `demo@quarantine.dev`.
+
+What it does:
+
+- Creates the **Quarantine Demo** organisation and one account in it with the
+  **VIEWER** role. Viewer can read every surface and change nothing: no scans,
+  no policy edits, no releasing a package from quarantine, no deciding an
+  exception, no invitations. A visitor cannot alter what the next visitor sees.
+  If the account is ever promoted, a later run puts it back to VIEWER.
+- Refuses a weak `DEMO_PASSWORD`, using the same zxcvbn policy the registration
+  form applies. A demo account on a public URL is still an account.
+- Rewrites the password hash on every run, so rotating the credential is a
+  redeploy rather than a database session.
+- **Runs six real analyses** — `ms`, `left-pad`, `lodash`, `esbuild`, `chalk`,
+  `semver` — through the same engine the scan page uses, so the dashboard has
+  genuine verdicts in it rather than fabricated rows. About twenty seconds of
+  network, skipped entirely on a second run. A package that fails to analyse is
+  reported and skipped rather than failing the deploy.
+
+The distinction that makes this safe: a password published for one specific
+instance, attached to a read-only account, is a different object from a default
+credential compiled into the source.
 
 ---
 

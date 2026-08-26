@@ -6,14 +6,22 @@ import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { requireAuthContext } from '@/lib/auth-context';
 import { SIGNAL_FAMILIES, SIGNAL_FAMILY_META } from '@/lib/constants';
+import { can } from '@/lib/rbac';
+import { EmptyState } from '@/components/shared/EmptyState';
+import { Button } from '@/components/ui/button';
 
 import { ScanForm } from './ScanForm';
 
 export const metadata: Metadata = { title: 'New scan' };
 
 export default async function ScanPage() {
-  // Not used for display — this is the authorisation check for the page itself.
-  await requireAuthContext();
+  const ctx = await requireAuthContext();
+
+  // A read-only role can reach this page; the Server Action would refuse the
+  // submission, which is where the actual authorisation lives. Rendering the
+  // form anyway means the primary call to action fails after it is used, so the
+  // page says so up front instead. This is presentation, not a control.
+  const canScan = can(ctx, 'scan:create', { orgId: ctx.orgId });
 
   return (
     <div className="space-y-8">
@@ -22,7 +30,25 @@ export default async function ScanPage() {
         description="Paste a package name or upload a lockfile. The engine downloads the published artefact, extracts it under a hard budget, and reads it statically — nothing in it is ever executed."
       />
 
-      <ScanForm />
+      {canScan ? (
+        <ScanForm />
+      ) : (
+        <EmptyState
+          icon={ShieldCheck}
+          title="Your role can read analyses, not start them"
+          description="Scanning downloads and analyses an untrusted archive, so it needs a role that can create one. Everything already analysed by this organisation is open to you."
+          action={
+            <Button asChild size="sm">
+              <Link href="/packages">Browse analysed packages</Link>
+            </Button>
+          }
+          footer={
+            <Link href="/dashboard" className="text-xs underline underline-offset-2">
+              Back to the dashboard
+            </Link>
+          }
+        />
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">

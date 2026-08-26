@@ -49,6 +49,29 @@ openssl rand -hex 32      # CRON_SECRET
 `lib/env.ts` validates the environment at boot and throws on anything missing or
 malformed, naming the variable but never printing its value.
 
+## The deployed instance
+
+<!-- Fill both in once Render is live. -->
+
+**URL:** _not yet deployed_
+
+**Demo login:** _set when the instance is seeded_ — a **read-only (VIEWER)**
+account. It can open every surface in the application and change nothing: it
+cannot run a scan, edit a policy, release a package from quarantine, decide an
+exception, or invite anyone. The dashboard behind it holds six real analyses —
+`ms`, `left-pad`, `lodash`, `esbuild`, `chalk`, `semver` — produced by running
+the actual engine against the live npm registry, not seeded rows.
+
+There is **no default credential anywhere in this repository**. The demo account
+exists only when a deployment is seeded with `SEED_DEMO_ACCOUNT=true` and a
+`DEMO_PASSWORD` chosen for that instance, and the seed refuses a password that
+fails the same strength policy the registration form applies. A credential
+published for one specific read-only instance is a different object from a
+guessable default shipped to everyone who clones the project — the second is a
+vulnerability in every deployment at once.
+
+To run your own, see [`DEPLOYMENT.md`](./DEPLOYMENT.md).
+
 ## Scripts
 
 | Script               | What it does                           |
