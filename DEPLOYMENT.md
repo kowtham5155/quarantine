@@ -93,13 +93,45 @@ Verify which one you are on after deploying — see §6.
 
 **New → Web Service**, connect the repository, then:
 
-| Setting           | Value                                                                         |
-| ----------------- | ----------------------------------------------------------------------------- |
-| Runtime           | Node                                                                          |
-| Build command     | `npm ci && npx prisma generate && npx prisma migrate deploy && npm run build` |
-| Start command     | `npm run start`                                                               |
-| Health check path | `/api/health`                                                                 |
-| Instance type     | Free is enough to demo; it sleeps after 15 minutes idle                       |
+| Setting           | Value                                                                                       |
+| ----------------- | ------------------------------------------------------------------------------------------- |
+| Runtime           | Node                                                                                        |
+| Build command     | `npm ci --include=dev && npx prisma generate && npx prisma migrate deploy && npm run build` |
+| Start command     | `npm run start`                                                                             |
+| Health check path | `/api/health`                                                                               |
+| Instance type     | Free is enough to demo; it sleeps after 15 minutes idle                                     |
+
+### `--include=dev` is not optional
+
+`NODE_ENV=production` has to be set for the running service, and Render applies
+service environment variables to the **build** as well. npm reads `NODE_ENV`:
+under `production` it treats an install as `--omit=dev` and skips every
+devDependency. In this project that is 374 packages, and it takes the build
+tooling with it:
+
+| package                                          | devDependency | needed for                                 |
+| ------------------------------------------------ | ------------- | ------------------------------------------ |
+| `tailwindcss`, `postcss`, `@tailwindcss/postcss` | yes           | compiling the stylesheet                   |
+| `typescript`, `@types/*`                         | yes           | `next build` type-checks by default here   |
+| `tsx`                                            | yes           | `scripts/seed-prod.ts` in the Render Shell |
+| `prisma`                                         | yes           | `prisma generate` and `migrate deploy`     |
+
+The failure this produces is not obvious from the message. It can surface as a
+missing PostCSS plugin, or — on Node 20 — as
+
+```
+Error: <Html> should not be imported outside of pages/_document.
+Error occurred prerendering page "/404".
+```
+
+which reads like an App Router bug and is nothing of the sort: with the CSS and
+TypeScript pipeline missing, the build falls back to the pages-router error
+page, and that page imports `_document`. There is no `pages/` directory in this
+project and nothing here imports `next/document`. Chasing the error message
+leads nowhere; the cause is the install.
+
+`--include=dev` overrides the `NODE_ENV` inference explicitly, so the build gets
+its tooling and the running service still has `NODE_ENV=production`.
 
 ### Environment variables
 
