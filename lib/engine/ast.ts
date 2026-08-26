@@ -330,6 +330,35 @@ export interface StringRecord {
 }
 
 /** Every string literal and template chunk. Hostile content by definition. */
+/**
+ * Byte ranges covered by comments, so a rule can tell code from prose.
+ *
+ * Needed because a dotted quad in a comment is usually not an address. core-js
+ * annotates its modules with ECMAScript spec section numbers — `25.4.3.1` is
+ * the Promise constructor — and those are indistinguishable from an IPv4
+ * address by shape alone. Position is what separates them.
+ */
+export function collectCommentRanges(file: ParsedFile): Array<[number, number]> {
+  const comments = file.ast?.comments;
+  if (!comments) return [];
+
+  const ranges: Array<[number, number]> = [];
+  for (const comment of comments) {
+    if (typeof comment.start === 'number' && typeof comment.end === 'number') {
+      ranges.push([comment.start, comment.end]);
+    }
+  }
+  return ranges;
+}
+
+/** Is this byte offset inside one of those ranges? */
+export function isInsideRanges(ranges: ReadonlyArray<[number, number]>, offset: number): boolean {
+  for (const [start, end] of ranges) {
+    if (offset >= start && offset < end) return true;
+  }
+  return false;
+}
+
 export function collectStrings(file: ParsedFile): StringRecord[] {
   if (!file.ast) return [];
   const strings: StringRecord[] = [];

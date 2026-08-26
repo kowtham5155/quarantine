@@ -3,10 +3,12 @@ import type { Node } from '@babel/types';
 import {
   calleeText,
   collectCalls,
+  collectCommentRanges,
   collectImports,
   collectMemberExpressions,
   collectStrings,
   excerptAt,
+  isInsideRanges,
 } from '@/lib/engine/ast';
 import {
   CONTEXT_FRAMEWORK_DEPENDENTS,
@@ -414,13 +416,34 @@ export async function analyseCapability(context: AnalysisContext): Promise<Famil
       // ---------------------------------------------------------------------
       IPV4_LITERAL.lastIndex = 0;
       let ipMatch: RegExpExecArray | null;
+      // Comments are prose, not code. Computed once per file, not per match.
+      const commentRanges = parsed.parsed ? collectCommentRanges(parsed) : [];
+
       while ((ipMatch = IPV4_LITERAL.exec(text)) !== null) {
         const address = ipMatch[0];
         if (!isRoutableLiteral(address)) continue;
 
+        /*
+         * A dotted quad inside a comment is almost never an address.
+         * `core-js` cites ECMAScript spec sections throughout its source —
+         * `25.4.3.1` is the Promise constructor — and by shape those are
+         * identical to an IPv4 address. Reading one as a command-and-control
+         * server pushed core-js, at seventy million weekly downloads, from LOW
+         * RISK to SUSPICIOUS on the strength of a citation.
+         *
+         * Malware does not hide its callback address in a comment; a comment
+         * does not execute. Skipping them costs no detection.
+         */
+        if (isInsideRanges(commentRanges, ipMatch.index)) continue;
+
         // Only interesting next to something that could send it somewhere.
+        //
+        // `//` used to appear in this pattern, meant to catch the slashes in a
+        // URL. It matches the start of every line comment in JavaScript, so it
+        // admitted anything commented out. `https?:` already covers the URL
+        // case that was actually wanted.
         const around = text.slice(Math.max(0, ipMatch.index - 120), ipMatch.index + 120);
-        if (!/https?:|connect|socket|fetch|request|axios|post|get\s*\(|curl|\/\/|:\d{2,5}/i.test(around)) {
+        if (!/https?:|connect|socket|fetch|request|axios|post|get\s*\(|curl|:\d{2,5}/i.test(around)) {
           continue;
         }
 

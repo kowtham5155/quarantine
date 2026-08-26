@@ -284,6 +284,54 @@ describe('analyseCapability', () => {
 
       expect(firedIds(signals).has('Q-CAP-007')).toBe(false);
     });
+
+    /**
+     * core-js cites ECMAScript spec sections in comments throughout its source.
+     * `25.4.3.1` is the Promise constructor and looks exactly like an address.
+     * Reading it as one took core-js to SUSPICIOUS on a real scan.
+     */
+    it('does not fire on a spec citation in a line comment', async () => {
+      const context = await buildContext({
+        files: [
+          {
+            path: 'modules/es.promise.constructor.js',
+            content: '// https://tc39.es/ecma262/#sec-promise-constructor 25.4.3.1\nexport default 1;\n',
+          },
+        ],
+      });
+      const { signals } = await analyseCapability(context);
+
+      expect(firedIds(signals).has('Q-CAP-007')).toBe(false);
+    });
+
+    it('does not fire on an address commented out next to a fetch', async () => {
+      const context = await buildContext({
+        files: [
+          {
+            path: 'index.js',
+            content: "/* fetch('http://93.184.216.34:8080/collect') */\nexport default 1;\n",
+          },
+        ],
+      });
+      const { signals } = await analyseCapability(context);
+
+      expect(firedIds(signals).has('Q-CAP-007')).toBe(false);
+    });
+
+    it('still fires on a real address in live code beside a comment', async () => {
+      const context = await buildContext({
+        files: [
+          {
+            path: 'index.js',
+            content: "// see 25.4.3.1\nfetch('http://93.184.216.34:8080/collect', {});\n",
+          },
+        ],
+      });
+      const { signals } = await analyseCapability(context);
+
+      expect(firedIds(signals).has('Q-CAP-007')).toBe(true);
+      expect(signalFor(signals, 'Q-CAP-007').evidence[0]?.detail?.address).toBe('93.184.216.34');
+    });
   });
 
   describe('Q-CAP-008 — known exfiltration endpoints', () => {
