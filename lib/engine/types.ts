@@ -246,6 +246,29 @@ export interface HardTriggerHit {
 }
 
 /** The engine's complete output for one package version. */
+/**
+ * Registry facts worth writing back to the catalogue row.
+ *
+ * Every string here is attacker-controlled — a package author chooses its own
+ * description and licence — so this is data a policy may *match on* and a page
+ * may escape and render, never data anything may trust.
+ */
+export interface CatalogueFacts {
+  description: string | null;
+  license: string | null;
+  repositoryUrl: string | null;
+  weeklyDownloads: number | null;
+  maintainerCount: number;
+  /** Publish time of the analysed version. */
+  publishedAt: Date | null;
+  /** Publish time of the package's earliest release, for age conditions. */
+  firstPublishedAt: Date | null;
+  tarballUrl: string | null;
+  integrity: string | null;
+  unpackedSize: number;
+  hasProvenanceAttestation: boolean;
+}
+
 export interface AnalysisResult {
   ecosystem: Ecosystem;
   name: string;
@@ -264,6 +287,8 @@ export interface AnalysisResult {
   /** Families that failed or were skipped, feeding the incompleteness penalty. */
   incompleteStages: string[];
   tarballSha256: string | null;
+  /** Registry metadata the catalogue keeps after the scan directory is gone. */
+  catalogue: CatalogueFacts;
   durationMs: number;
   /** True when at least one family failed and the result is partial. */
   partial: boolean;

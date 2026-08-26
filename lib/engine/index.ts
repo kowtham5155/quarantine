@@ -288,10 +288,32 @@ export async function analyse(options: AnalyseOptions): Promise<AnalysisResult> 
       families: results,
       incompleteStages,
       tarballSha256: downloaded.sha256,
+      catalogue: {
+        description: metadata.description,
+        license: metadata.license,
+        repositoryUrl: metadata.repositoryUrl,
+        weeklyDownloads: metadata.weeklyDownloads,
+        maintainerCount: metadata.maintainers.length,
+        publishedAt: metadata.publishedAt,
+        firstPublishedAt: earliestRelease(metadata),
+        tarballUrl: metadata.tarballUrl,
+        integrity: metadata.integrity,
+        unpackedSize: extraction.totalBytes,
+        hasProvenanceAttestation: metadata.hasProvenanceAttestation,
+      },
       durationMs: Date.now() - startedAt,
       partial: incompleteStages.length > 0,
     };
   });
+}
+
+/** Earliest publish time in the release history, or the analysed version's own. */
+function earliestRelease(metadata: PackageMetadata): Date | null {
+  let earliest: Date | null = metadata.publishedAt;
+  for (const release of metadata.releaseHistory) {
+    if (!earliest || release.publishedAt < earliest) earliest = release.publishedAt;
+  }
+  return earliest;
 }
 
 /**

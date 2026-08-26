@@ -19,6 +19,7 @@ import { SignalBadge } from '@/components/shared/SignalBadge';
 import { StatCard } from '@/components/shared/StatCard';
 import { TimeAgo } from '@/components/shared/TimeAgo';
 import { VerdictBadge } from '@/components/shared/VerdictBadge';
+import { VerdictDistribution } from '@/components/shared/VerdictDistribution';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,7 +29,6 @@ import { ecosystemSlug, versionHref } from '@/lib/routes';
 import { getDashboardSummary, THROUGHPUT_DAYS } from '@/lib/services/dashboard.service';
 
 import { ThroughputChart } from './ThroughputChart';
-import { VerdictDistribution } from './VerdictDistribution';
 
 export const metadata: Metadata = { title: 'Dashboard' };
 

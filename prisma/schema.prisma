@@ -234,6 +234,9 @@ model User {
   totpRecoveryCodes String[]  @default([])
   /// Last accepted TOTP time step, so a code cannot be replayed in its window.
   lastTotpTimeStep  Int?
+  /// Per-user preferences (notification channels and thresholds). Never
+  /// security-relevant: nothing here can widen what the user may do.
+  settings          Json      @default("{}")
   lastLoginAt       DateTime?
   failedLoginCount  Int       @default(0)
   lockedUntil       DateTime?
@@ -328,6 +331,9 @@ model Package {
   name             String
   latestVersion    String?
   description      String?
+  /// Declared SPDX expression, verbatim from the registry. Attacker-controlled:
+  /// a policy may match on it, nothing may trust it.
+  license          String?
   repositoryUrl    String?
   weeklyDownloads  Int       @default(0)
   firstPublishedAt DateTime?
@@ -805,6 +811,11 @@ model Report {
   generatedById String?
   params        Json         @default("{}")
   status        ReportStatus @default(QUEUED)
+  /// The generated document itself. A report is a snapshot — recomputing it on
+  /// every read would mean two people citing "the same report" could see
+  /// different numbers. There is no object store in this deployment, and these
+  /// documents are counts and coordinates rather than blobs, so they live here.
+  payload       Json         @default("{}")
   storagePath   String?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
@@ -854,10 +865,36 @@ model Webhook {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  org        Organization      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
 
   @@index([orgId])
   @@index([active])
+}
+
+/// One attempt per row, including failures. `orgId` is a plain indexed column
+/// rather than a relation: a delivery has no life of its own once its webhook
+/// is gone, and the cascade from Webhook already covers that — the column
+/// exists so a tenant-scoped read never has to join to filter.
+model WebhookDelivery {
+  id         String   @id @default(cuid())
+  orgId      String
+  webhookId  String
+  event      String
+  /// HTTP status returned by the endpoint, null when the request never landed.
+  statusCode Int?
+  ok         Boolean  @default(false)
+  /// Redacted failure summary. Never a stack trace, never the response body.
+  error      String?
+  durationMs Int?
+  payload    Json     @default("{}")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([webhookId, createdAt])
 }
 
 /// Append-only. Nothing in the application updates or deletes a row here;

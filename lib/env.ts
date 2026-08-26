@@ -57,6 +57,17 @@ export const envSchema = z.object({
    */
   GITHUB_TOKEN: z.string().min(1).optional(),
 
+  /**
+   * Comma-separated emails allowed into /admin.
+   *
+   * Platform administration is deliberately not a role in the database. A role
+   * can be granted through the application, and the whole point of this surface
+   * is that it crosses tenant boundaries — so the only way in is a value an
+   * operator sets on the deployment, which no request can change. Empty (the
+   * default) means the surface is closed to everyone.
+   */
+  PLATFORM_ADMIN_EMAILS: z.string().optional(),
+
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
   /** Optional log level override; defaults are set in lib/logger.ts. */
@@ -90,6 +101,14 @@ function parseEnv(): Env {
 }
 
 export const env: Env = parseEnv();
+
+/** Normalised platform-admin allowlist. Lower-cased, empty entries dropped. */
+export const platformAdminEmails: ReadonlySet<string> = new Set(
+  (env.PLATFORM_ADMIN_EMAILS ?? '')
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry.length > 0),
+);
 
 export const isProduction = env.NODE_ENV === 'production';
 export const isDevelopment = env.NODE_ENV === 'development';

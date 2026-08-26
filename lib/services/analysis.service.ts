@@ -12,6 +12,7 @@ import { isValidNpmName, isValidVersion } from '@/lib/engine/registry/npm';
 import * as pypiRegistry from '@/lib/engine/registry/pypi';
 import { isValidPypiName } from '@/lib/engine/registry/pypi';
 import type { AnalysisResult, RuleDefinition, Signal } from '@/lib/engine/types';
+import { applyPolicies } from '@/lib/services/policy.service';
 import { clusterAnalysis } from '@/lib/services/campaign.service';
 
 /**
@@ -381,6 +382,15 @@ export async function runAnalysis(
       logger.warn({ err: error, analysisId: analysis.id }, 'campaign clustering failed');
     }
 
+    // Policy enforcement, on the same terms. The evidence is already durable at
+    // this point; a policy that cannot be evaluated is a governance gap to
+    // report, not a reason to discard an analysis that succeeded.
+    try {
+      await applyPolicies(ctx, analysis.id);
+    } catch (error) {
+      logger.warn({ err: error, analysisId: analysis.id }, 'policy enforcement failed');
+    }
+
     return result;
   } catch (error) {
     const message =
@@ -453,17 +463,36 @@ async function persistResult(
     const typosquats = toTyposquatRows(analysisId, result);
     if (typosquats.length > 0) await tx.typosquatMatch.createMany({ data: typosquats });
 
+    // Registry facts, written back so the catalogue survives the scan directory
+    // being deleted. Policy conditions (package age, maintainer count, licence)
+    // read these columns, so they have to be persisted rather than recomputed
+    // from a tarball nobody keeps.
+    const facts = result.catalogue;
+
     await tx.packageVersion.update({
       where: { id: packageVersionId },
       data: {
         hasInstallScripts: fired.some((signal) => signal.ruleId === 'Q-INS-001'),
         fileCount: countFiles(result.signals),
+        unpackedSize: facts.unpackedSize,
+        provenanceAttested: facts.hasProvenanceAttestation,
+        ...(facts.publishedAt ? { publishedAt: facts.publishedAt } : {}),
+        ...(facts.tarballUrl ? { tarballUrl: facts.tarballUrl } : {}),
+        ...(facts.integrity ? { integrity: facts.integrity } : {}),
       },
     });
 
     await tx.package.update({
       where: { id: packageId },
-      data: { latestVersion: result.version },
+      data: {
+        latestVersion: result.version,
+        description: facts.description,
+        license: facts.license,
+        repositoryUrl: facts.repositoryUrl,
+        maintainerCount: facts.maintainerCount,
+        ...(facts.weeklyDownloads === null ? {} : { weeklyDownloads: facts.weeklyDownloads }),
+        ...(facts.firstPublishedAt ? { firstPublishedAt: facts.firstPublishedAt } : {}),
+      },
     });
   });
 

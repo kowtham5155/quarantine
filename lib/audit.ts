@@ -76,9 +76,22 @@ export type AuditAction =
   | 'quarantine.released'
   | 'quarantine.confirmed_bad'
   | 'project.created'
+  | 'project.updated'
   | 'project.deleted'
+  | 'project.dependencies_imported'
   | 'scan.created'
-  | 'report.generated';
+  | 'violation.triaged'
+  | 'exception.expired'
+  | 'alert.resolved'
+  | 'rule.updated'
+  | 'corpus.entry_created'
+  | 'corpus.entry_updated'
+  | 'corpus.entry_deleted'
+  | 'eval.ran'
+  | 'webhook.tested'
+  | 'user.preferences_updated'
+  | 'report.generated'
+  | 'report.deleted';
 
 /**
  * Write an audit line for a caller that already has a full AuthContext.

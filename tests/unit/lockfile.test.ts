@@ -18,8 +18,8 @@ describe('parseLockfile', () => {
 
     expect(result.kind).toBe('package-lock');
     expect(result.entries).toEqual([
-      { name: '@scope/inner', version: '1.0.0', direct: false },
-      { name: 'lodash', version: '4.17.21', direct: true },
+      { name: '@scope/inner', version: '1.0.0', direct: false, depth: 1, path: [] },
+      { name: 'lodash', version: '4.17.21', direct: true, depth: 0, path: [] },
     ]);
   });
 
@@ -34,8 +34,8 @@ describe('parseLockfile', () => {
     const result = parseLockfile('package-lock.json', content);
 
     expect(result.entries).toEqual([
-      { name: 'cookie', version: '0.5.0', direct: false },
-      { name: 'express', version: '4.18.2', direct: true },
+      { name: 'cookie', version: '0.5.0', direct: false, depth: 1, path: ['express'] },
+      { name: 'express', version: '4.18.2', direct: true, depth: 0, path: [] },
     ]);
   });
 
@@ -56,9 +56,31 @@ describe('parseLockfile', () => {
 
     expect(result.kind).toBe('yarn');
     expect(result.entries).toEqual([
-      { name: '@babel/core', version: '7.24.0', direct: false },
-      { name: 'left-pad', version: '1.3.0', direct: false },
+      { name: '@babel/core', version: '7.24.0', direct: false, depth: 1, path: [] },
+      { name: 'left-pad', version: '1.3.0', direct: false, depth: 1, path: [] },
     ]);
+  });
+
+  it('walks the declared graph for depth and path rather than the install path', () => {
+    // `deep` is installed three levels down in node_modules but is only one
+    // edge from the root: install depth and graph depth are different things.
+    const content = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        '': { dependencies: { top: '^1.0.0' } },
+        'node_modules/top': { version: '1.0.0', dependencies: { mid: '^2.0.0' } },
+        'node_modules/top/node_modules/mid': { version: '2.0.0', dependencies: { leaf: '^3.0.0' } },
+        'node_modules/top/node_modules/mid/node_modules/leaf': { version: '3.0.0' },
+      },
+    });
+
+    const byName = new Map(
+      parseLockfile('package-lock.json', content).entries.map((entry) => [entry.name, entry]),
+    );
+
+    expect(byName.get('top')).toMatchObject({ depth: 0, path: [], direct: true });
+    expect(byName.get('mid')).toMatchObject({ depth: 1, path: ['top'] });
+    expect(byName.get('leaf')).toMatchObject({ depth: 2, path: ['top', 'mid'] });
   });
 
   it('rejects coordinates that are not plausible package names or versions', () => {

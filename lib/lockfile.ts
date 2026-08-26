@@ -21,6 +21,17 @@ export interface LockfileEntry {
   version: string;
   /** True when the lockfile marks this as a direct dependency of the root project. */
   direct: boolean;
+  /**
+   * Distance from the root project in the declared dependency graph: 0 for a
+   * direct dependency, 1 for something a direct dependency pulled in, and so on.
+   *
+   * This is graph depth, not install depth. npm hoists almost everything to a
+   * flat `node_modules`, so the path a package is installed at says nothing
+   * about why it is there; the edges declared in the lockfile do.
+   */
+  depth: number;
+  /** Ancestor chain from the root, excluding this package. Empty for a direct dependency. */
+  path: string[];
 }
 
 export interface ParsedLockfile {
@@ -72,33 +83,108 @@ function nameFromPackagePath(path: string): string | null {
   return name.length > 0 ? name : null;
 }
 
+interface DependencyGraph {
+  entries: Map<string, LockfileEntry>;
+  /** name -> names it declares a dependency on. */
+  edges: Map<string, Set<string>>;
+  /** Names the root project depends on directly. */
+  roots: Set<string>;
+}
+
+/** Names declared in the dependency blocks of one lockfile node. */
+function declaredDependencies(node: Record<string, unknown>): string[] {
+  const names: string[] = [];
+  for (const field of [
+    'dependencies',
+    'devDependencies',
+    'optionalDependencies',
+    'peerDependencies',
+    'requires',
+  ] as const) {
+    const block = node[field];
+    // In lockfile v1 `dependencies` is a nested tree of objects; in v2/v3 and in
+    // `requires` it is a name -> range map. Both give the names we need.
+    if (isRecord(block)) names.push(...Object.keys(block));
+  }
+  return names;
+}
+
+/**
+ * Walk the graph outward from the root, assigning each package the shortest
+ * path that reaches it.
+ *
+ * Breadth-first, so the first path found is the shortest one — which is the
+ * path a developer needs to see to remove the dependency. A package the walk
+ * never reaches (a hoisted duplicate the lockfile does not link back to
+ * anything) is recorded as transitive with an unknown path rather than being
+ * given an invented one.
+ */
+function assignDepths(graph: DependencyGraph): void {
+  const seen = new Set<string>();
+  let frontier: Array<{ name: string; path: string[] }> = [...graph.roots].map((name) => ({
+    name,
+    path: [],
+  }));
+  let depth = 0;
+
+  while (frontier.length > 0 && depth <= 20) {
+    const next: Array<{ name: string; path: string[] }> = [];
+
+    for (const node of frontier) {
+      if (seen.has(node.name)) continue;
+      seen.add(node.name);
+
+      for (const entry of graph.entries.values()) {
+        if (entry.name !== node.name) continue;
+        entry.depth = depth;
+        entry.path = node.path;
+        entry.direct = entry.direct || depth === 0;
+      }
+
+      for (const child of graph.edges.get(node.name) ?? []) {
+        if (seen.has(child)) continue;
+        next.push({ name: child, path: [...node.path, node.name] });
+      }
+    }
+
+    frontier = next;
+    depth += 1;
+  }
+
+  for (const entry of graph.entries.values()) {
+    if (seen.has(entry.name)) continue;
+    entry.depth = 1;
+    entry.path = [];
+  }
+}
+
 function parsePackageLock(document: Record<string, unknown>): LockfileEntry[] {
-  const entries = new Map<string, LockfileEntry>();
+  const graph: DependencyGraph = { entries: new Map(), edges: new Map(), roots: new Set() };
 
   const add = (name: string, version: unknown, direct: boolean): void => {
     if (typeof version !== 'string') return;
     if (!isPlausible(name, version)) return;
     const key = `${name}@${version}`;
-    const existing = entries.get(key);
+    const existing = graph.entries.get(key);
     if (existing) {
       if (direct) existing.direct = true;
       return;
     }
-    entries.set(key, { name, version, direct });
+    graph.entries.set(key, { name, version, direct, depth: direct ? 0 : 1, path: [] });
+  };
+
+  const link = (from: string, to: string[]): void => {
+    const set = graph.edges.get(from) ?? new Set<string>();
+    for (const name of to) set.add(name);
+    graph.edges.set(from, set);
   };
 
   // Lockfile v2 / v3: a flat map keyed by install path.
   const packages = document.packages;
   if (isRecord(packages)) {
-    const rootDependencies = new Set<string>();
     const root = packages[''];
     if (isRecord(root)) {
-      for (const field of ['dependencies', 'devDependencies', 'optionalDependencies'] as const) {
-        const block = root[field];
-        if (isRecord(block)) {
-          for (const name of Object.keys(block)) rootDependencies.add(name);
-        }
-      }
+      for (const name of declaredDependencies(root)) graph.roots.add(name);
     }
 
     for (const [path, value] of Object.entries(packages)) {
@@ -106,22 +192,28 @@ function parsePackageLock(document: Record<string, unknown>): LockfileEntry[] {
       if (value.link === true) continue;
       const name = typeof value.name === 'string' ? value.name : nameFromPackagePath(path);
       if (!name) continue;
-      add(name, value.version, rootDependencies.has(name));
+      add(name, value.version, graph.roots.has(name));
+      link(name, declaredDependencies(value));
     }
   }
 
   // Lockfile v1: a nested tree under `dependencies`.
-  const walk = (block: unknown, depth: number, direct: boolean): void => {
-    if (depth > 20 || !isRecord(block)) return;
+  const walk = (block: unknown, level: number, direct: boolean, parent: string | null): void => {
+    if (level > 20 || !isRecord(block)) return;
     for (const [name, value] of Object.entries(block)) {
       if (!isRecord(value)) continue;
       add(name, value.version, direct);
-      walk(value.dependencies, depth + 1, false);
+      if (direct) graph.roots.add(name);
+      if (parent) link(parent, [name]);
+      link(name, declaredDependencies(value));
+      walk(value.dependencies, level + 1, false, name);
     }
   };
-  walk(document.dependencies, 0, true);
+  walk(document.dependencies, 0, true, null);
 
-  return [...entries.values()];
+  assignDepths(graph);
+
+  return [...graph.entries.values()];
 }
 
 /**
@@ -160,7 +252,10 @@ function parseYarnLock(content: string): LockfileEntry[] {
     for (const name of pendingNames) {
       if (!isPlausible(name, version)) continue;
       const key = `${name}@${version}`;
-      if (!entries.has(key)) entries.set(key, { name, version, direct: false });
+      // yarn.lock's own dependency blocks are not parsed, so there is no graph
+      // to walk here: every entry is reported as transitive with an unknown
+      // path, which is less than package-lock gives but is not a guess.
+      if (!entries.has(key)) entries.set(key, { name, version, direct: false, depth: 1, path: [] });
     }
     pendingNames = [];
   }

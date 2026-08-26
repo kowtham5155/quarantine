@@ -254,6 +254,14 @@ export function resetHostRateLimits(): void {
 // ---------------------------------------------------------------------------
 
 export interface SafeFetchOptions {
+  /**
+   * Request method. POST exists for outbound webhook delivery, which is the
+   * only thing this application sends rather than fetches; a POST is still
+   * subject to every guard, including re-validating each redirect hop.
+   */
+  method?: 'GET' | 'POST';
+  /** Request body, for POST. Sent as `application/json` unless overridden. */
+  body?: string;
   /** Response header accept value. Defaults to JSON. */
   accept?: string;
   /** Cap on the response body. Defaults to MAX_RESPONSE_BYTES. */
@@ -306,6 +314,8 @@ export async function safeFetch(
   options: SafeFetchOptions = {},
 ): Promise<SafeResponse> {
   const {
+    method = 'GET',
+    body: requestBody,
     accept = 'application/json',
     maxBytes = MAX_RESPONSE_BYTES,
     timeoutMs = FETCH_TIMEOUT_MS,
@@ -353,15 +363,17 @@ export async function safeFetch(
     let response: UndiciResponse;
     try {
       response = await undiciFetch(url, {
-        method: 'GET',
+        method,
         redirect: 'manual',
         signal: controller.signal,
         headers: {
+          ...(requestBody === undefined ? {} : { 'content-type': 'application/json' }),
           ...headers,
           accept,
           'user-agent': USER_AGENT,
           'accept-encoding': 'gzip, deflate',
         },
+        ...(requestBody === undefined ? {} : { body: requestBody }),
         dispatcher: agent,
       });
     } catch (error) {
