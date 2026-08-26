@@ -12,7 +12,6 @@ export const metadata: Metadata = {
 
 const NOTICES: Record<string, string> = {
   reset: 'Password updated. Sign in with your new password.',
-  verified: 'Email verified. You can sign in now.',
   invite: 'Sign in to accept your invitation.',
 };
 
@@ -31,7 +30,6 @@ export default async function LoginPage({
 
   let notice: string | undefined;
   if (params.reset) notice = NOTICES.reset;
-  else if (params.verified) notice = NOTICES.verified;
   else if (params.invite) notice = NOTICES.invite;
 
   return (

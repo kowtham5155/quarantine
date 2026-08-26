@@ -26,8 +26,8 @@ import {
  * 1. **Enumeration safety.** Any endpoint an unauthenticated caller can reach
  *    with an arbitrary email returns the same response whether or not that
  *    email exists. Registration is the unavoidable exception — a unique
- *    constraint has to be reported somehow — and is handled by sending a
- *    "check your email" response either way.
+ *    constraint has to be reported somehow — and is handled by returning the
+ *    same success response whether or not the address was taken.
  *
  * 2. **Every token is single-use, hashed at rest, and compared in constant
  *    time.** See lib/tokens.ts.
@@ -55,8 +55,6 @@ export type RegisterInput = z.infer<typeof registerSchema>;
 export interface RegisterResult {
   /** Always true — the response does not reveal whether the email was taken. */
   ok: true;
-  /** Present only in non-production, so the flow is testable without email. */
-  verificationToken?: string;
 }
 
 export async function register(
@@ -87,19 +85,9 @@ export async function register(
   }
 
   const passwordHash = await hashPassword(password);
-  const verification = issueToken();
 
   const user = await prisma.user.create({
     data: { email, name, passwordHash },
-  });
-
-  await prisma.verificationToken.create({
-    data: {
-      identifier: email,
-      tokenHash: verification.tokenHash,
-      type: VerificationTokenType.EMAIL_VERIFICATION,
-      expiresAt: verification.expiresAt,
-    },
   });
 
   await auditAnonymous(
@@ -110,10 +98,7 @@ export async function register(
     request,
   );
 
-  return {
-    ok: true,
-    ...(process.env.NODE_ENV === 'production' ? {} : { verificationToken: verification.token }),
-  };
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -308,67 +293,6 @@ async function enforceLimit(
   if (!result.allowed) {
     throw new RateLimitError('Too many attempts. Try again shortly.', result.retryAfterSeconds);
   }
-}
-
-// ---------------------------------------------------------------------------
-// Email verification
-// ---------------------------------------------------------------------------
-
-export interface VerifyEmailResult {
-  ok: boolean;
-  email: string | null;
-}
-
-/**
- * Consume an email-verification token. Invalid, expired and already-used tokens
- * are indistinguishable in the response.
- */
-export async function verifyEmail(
-  token: string,
-  request: RequestInfo = {},
-): Promise<VerifyEmailResult> {
-  if (typeof token !== 'string' || token.length < 20 || token.length > 200) {
-    return { ok: false, email: null };
-  }
-
-  await enforceLimit('emailVerification', { ip: request.ip });
-
-  const row = await prisma.verificationToken.findUnique({
-    where: { tokenHash: hashToken(token) },
-  });
-
-  if (!row || row.type !== VerificationTokenType.EMAIL_VERIFICATION) {
-    return { ok: false, email: null };
-  }
-  if (!verifyToken(token, row.tokenHash)) return { ok: false, email: null };
-  if (isExpired(row.expiresAt)) {
-    await prisma.verificationToken.delete({ where: { id: row.id } });
-    return { ok: false, email: null };
-  }
-
-  const user = await prisma.user.findUnique({ where: { email: row.identifier } });
-  if (!user) {
-    await prisma.verificationToken.delete({ where: { id: row.id } });
-    return { ok: false, email: null };
-  }
-
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { emailVerifiedAt: new Date() },
-  });
-
-  // Single use.
-  await prisma.verificationToken.delete({ where: { id: row.id } });
-
-  await auditAnonymous(
-    { userId: user.id, email: user.email },
-    'auth.email_verified',
-    { type: 'User', id: user.id },
-    {},
-    request,
-  );
-
-  return { ok: true, email: user.email };
 }
 
 // ---------------------------------------------------------------------------

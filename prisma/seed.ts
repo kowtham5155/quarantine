@@ -24,7 +24,6 @@ import {
   AnalysisStatus,
   Verdict,
   ViolationState,
-  VerificationTokenType,
 } from '@prisma/client';
 import { createHash, randomBytes } from 'node:crypto';
 
@@ -263,16 +262,6 @@ async function seedUsers(orgs: SeedOrgs): Promise<SeedUsers> {
       role: Role.ANALYST,
       tokenHash: sha256(randomBytes(32).toString('hex')),
       expiresAt: daysAgo(-5),
-      createdAt: daysAgo(2),
-    },
-  });
-
-  await prisma.verificationToken.create({
-    data: {
-      identifier: 'new.engineer@acme.example',
-      tokenHash: sha256(randomBytes(32).toString('hex')),
-      type: VerificationTokenType.EMAIL_VERIFICATION,
-      expiresAt: daysAgo(-1),
       createdAt: daysAgo(2),
     },
   });

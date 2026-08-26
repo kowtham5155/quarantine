@@ -18,10 +18,8 @@ export interface LoginState extends FormState {
 export const initialLoginState: LoginState = { status: 'idle', message: null, step: 'password' };
 
 export interface RegisterState extends FormState {
-  /** Set once registration succeeds so the page can show the "check your email" panel. */
+  /** Set once registration succeeds so the page can confirm which address it took. */
   registeredEmail?: string;
-  /** Non-production convenience link, mirroring the service's behaviour. */
-  verificationToken?: string;
 }
 
 export const initialRegisterState: RegisterState = { status: 'idle', message: null };

@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, MailCheck } from 'lucide-react';
+import { CircleCheck, Loader2 } from 'lucide-react';
 
 import { registerAction } from '@/app/(auth)/actions';
 import { initialRegisterState } from '@/app/(auth)/form-states';
@@ -24,37 +24,19 @@ export function RegisterForm() {
     return (
       <div className="space-y-5">
         <Alert>
-          <MailCheck aria-hidden="true" className="size-4" />
+          <CircleCheck aria-hidden="true" className="size-4" />
           <AlertTitle>Your account is ready</AlertTitle>
           <AlertDescription>
-            {/* Deliberately does not claim an email was sent. This deployment has
-                no mail transport, and signing in does not require verification —
-                telling someone to check an inbox nothing was sent to is the kind
-                of small lie that costs a user ten minutes and their trust. */}
+            {/* There is no email verification step and no mail transport in this
+                deployment, so there is nothing to send and nothing to wait for.
+                Say that plainly rather than pointing at an empty inbox. */}
             If that address could be registered,{' '}
-            <span className="font-mono">{state.registeredEmail}</span> can sign in now. Email
-            verification is not wired up in this deployment, so there is nothing waiting in your
-            inbox and nothing you need to click.
+            <span className="font-mono">{state.registeredEmail}</span> can sign in now. There is no
+            confirmation email to wait for.
           </AlertDescription>
         </Alert>
 
-        {state.verificationToken ? (
-          <div className="rounded-md border border-dashed border-border p-3 text-sm">
-            <p className="font-medium">Development shortcut</p>
-            <p className="mt-1 text-muted-foreground">
-              No mail provider is configured, so the verification link is shown here instead. It
-              marks the address verified; it is not needed to sign in.
-            </p>
-            <Link
-              href={`/verify-email/${state.verificationToken}`}
-              className="mt-2 inline-block font-mono text-xs break-all text-primary underline underline-offset-4"
-            >
-              /verify-email/{state.verificationToken}
-            </Link>
-          </div>
-        ) : null}
-
-        <Button asChild variant="outline" className="w-full">
+        <Button asChild className="w-full">
           <Link href="/login">Sign in</Link>
         </Button>
       </div>

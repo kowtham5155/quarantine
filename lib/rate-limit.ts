@@ -35,7 +35,6 @@ export const RATE_LIMITS = {
   login: { limit: 5, windowMs: 15 * MINUTE },
   register: { limit: 5, windowMs: 60 * MINUTE },
   passwordReset: { limit: 5, windowMs: 60 * MINUTE },
-  emailVerification: { limit: 10, windowMs: 60 * MINUTE },
   totpVerify: { limit: 10, windowMs: 15 * MINUTE },
   inviteSend: { limit: 30, windowMs: 60 * MINUTE },
   scanCreate: { limit: 60, windowMs: 60 * MINUTE },

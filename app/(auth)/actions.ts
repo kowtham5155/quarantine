@@ -103,13 +103,12 @@ export async function registerAction(
   const password = field(formData, 'password');
 
   try {
-    const result = await authService.register({ email, name, password }, await requestInfo());
+    await authService.register({ email, name, password }, await requestInfo());
 
     return {
       status: 'success',
       message: null,
       registeredEmail: email.trim().toLowerCase(),
-      ...(result.verificationToken ? { verificationToken: result.verificationToken } : {}),
     };
   } catch (error) {
     return toFormState(error);
