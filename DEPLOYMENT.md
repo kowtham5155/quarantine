@@ -186,7 +186,15 @@ development seed and it begins by truncating every table.
 ### The first account
 
 Register it at `/register`. That creates the account, its organisation, and
-makes the user the organisation's owner.
+makes the user the organisation's owner, and you can sign in immediately.
+
+**There is no mail transport in this deployment.** Registration issues an email
+verification token and stores it, but nothing sends it anywhere, and signing in
+does not require a verified address — so the flow completes without an inbox.
+Password reset, which does depend on a delivered link, therefore does not work
+either; change a password by re-running the seed for the demo account, or by
+adding a mail provider. The registration screen says all of this rather than
+telling you to check an inbox nothing was sent to.
 
 **There is no default credential in this repository, and no password written
 down anywhere in it.** A guessable default shipped to everyone who clones the

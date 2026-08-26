@@ -25,11 +25,16 @@ export function RegisterForm() {
       <div className="space-y-5">
         <Alert>
           <MailCheck aria-hidden="true" className="size-4" />
-          <AlertTitle>Check your email</AlertTitle>
+          <AlertTitle>Your account is ready</AlertTitle>
           <AlertDescription>
-            If that address can be registered, we have sent a verification link to{' '}
-            <span className="font-mono">{state.registeredEmail}</span>. The link is valid for one
-            hour and can be used once.
+            {/* Deliberately does not claim an email was sent. This deployment has
+                no mail transport, and signing in does not require verification —
+                telling someone to check an inbox nothing was sent to is the kind
+                of small lie that costs a user ten minutes and their trust. */}
+            If that address could be registered,{' '}
+            <span className="font-mono">{state.registeredEmail}</span> can sign in now. Email
+            verification is not wired up in this deployment, so there is nothing waiting in your
+            inbox and nothing you need to click.
           </AlertDescription>
         </Alert>
 
@@ -37,7 +42,8 @@ export function RegisterForm() {
           <div className="rounded-md border border-dashed border-border p-3 text-sm">
             <p className="font-medium">Development shortcut</p>
             <p className="mt-1 text-muted-foreground">
-              No mail provider is configured outside production, so the link is shown here instead.
+              No mail provider is configured, so the verification link is shown here instead. It
+              marks the address verified; it is not needed to sign in.
             </p>
             <Link
               href={`/verify-email/${state.verificationToken}`}
@@ -49,7 +55,7 @@ export function RegisterForm() {
         ) : null}
 
         <Button asChild variant="outline" className="w-full">
-          <Link href="/login">Back to sign in</Link>
+          <Link href="/login">Sign in</Link>
         </Button>
       </div>
     );
