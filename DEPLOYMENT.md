@@ -201,7 +201,11 @@ the seed:
 SEED_DEMO_ACCOUNT=true DEMO_PASSWORD='<a strong password you choose for this instance>' npx tsx scripts/seed-prod.ts
 ```
 
-Optionally `DEMO_EMAIL` to override the default `demo@quarantine.dev`.
+Optionally `DEMO_EMAIL` to override the default `demo@quarantine.dev`, and
+`DEMO_NAME` to override the display name (default `Demo Viewer`).
+
+Sign-in is by email address — `lib/services/auth.service.ts` validates it as
+one — so `DEMO_EMAIL` has to be an address, not a bare username.
 
 What it does:
 

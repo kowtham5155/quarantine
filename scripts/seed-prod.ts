@@ -55,6 +55,8 @@ const prisma = new PrismaClient();
 const DEMO_ORG_SLUG = 'quarantine-demo';
 const DEMO_ORG_NAME = 'Quarantine Demo';
 const DEMO_EMAIL = process.env.DEMO_EMAIL ?? 'demo@quarantine.dev';
+/** Display name shown in the top bar and on audit entries. */
+const DEMO_NAME = process.env.DEMO_NAME ?? 'Demo Viewer';
 
 /**
  * What the demo dashboard is populated with.
@@ -176,10 +178,10 @@ async function seedDemoAccount(): Promise<void> {
   // database session. Nothing else about an existing row is touched.
   const user = await prisma.user.upsert({
     where: { email: DEMO_EMAIL },
-    update: { passwordHash },
+    update: { passwordHash, name: DEMO_NAME },
     create: {
       email: DEMO_EMAIL,
-      name: 'Demo Viewer',
+      name: DEMO_NAME,
       passwordHash,
       // Verified at creation: there is no inbox behind this address, and an
       // unverified account cannot sign in.
@@ -203,7 +205,7 @@ async function seedDemoAccount(): Promise<void> {
     console.log('demo account role reset to VIEWER');
   }
 
-  console.log(`\ndemo account   ${DEMO_EMAIL} (VIEWER) in ${DEMO_ORG_NAME}`);
+  console.log(`\ndemo account   ${DEMO_EMAIL} — ${DEMO_NAME} (VIEWER) in ${DEMO_ORG_NAME}`);
   console.log('password       from DEMO_PASSWORD, not stored in the repository');
 
   await seedDemoAnalyses(org.id);
