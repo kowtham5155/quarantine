@@ -23,6 +23,36 @@ transaction mode, which cannot run migrations; Prisma uses `DIRECT_URL` for
 `migrate` and the pooled one for everything else. Give it a pooled URL only and
 the deploy fails during migration with a prepared-statement error.
 
+### Locally: two files, and the Prisma CLI only reads one of them
+
+On Render both variables are set in the service environment and this does not
+arise. Locally it does, once, for everybody:
+
+| file         | read by                                              | contents                                      |
+| ------------ | ---------------------------------------------------- | --------------------------------------------- |
+| `.env.local` | the Next.js runtime — dev server, build, `npm start` | every variable in the table below             |
+| `.env`       | the Prisma CLI                                       | `DATABASE_URL` and `DIRECT_URL`, nothing else |
+
+`.env.local` is a **Next.js** convention, not a dotenv standard, and the Prisma
+CLI has never heard of it. So with only `.env.local` present:
+
+```
+$ npx prisma migrate deploy
+Error: Environment variable not found: DIRECT_URL
+```
+
+Create `.env` alongside it holding just the two connection strings, copied
+verbatim from `.env.local`. Both files are gitignored (`.gitignore` lines 8–10)
+and neither is tracked.
+
+Keep the two copies identical. If they drift, the application and your
+migrations are pointed at different databases, and the symptom is a missing
+column somewhere unrelated rather than anything naming the real cause.
+
+The `npm run db:*` scripts sidestep this entirely — they invoke Prisma through
+`dotenv -e .env.local` — so `npm run db:deploy` works with or without `.env`. It
+is the bare `npx prisma ...` form that needs it.
+
 ---
 
 ## 2. Secrets

@@ -36,8 +36,19 @@ resolves to the same tree as an install in six months.
 ```bash
 npm install
 cp .env.example .env.local     # then fill in DATABASE_URL and the secrets
+
+# The Prisma CLI reads .env, not .env.local — .env.local is a Next.js
+# convention the CLI has never heard of. Give it the two connection strings:
+grep -E '^(DATABASE_URL|DIRECT_URL)=' .env.local > .env
+
+npx prisma migrate deploy      # needs DIRECT_URL, the unpooled Neon string
 npm run dev                    # http://localhost:3000
 ```
+
+Without that `.env`, `npx prisma migrate deploy` fails with
+`Environment variable not found: DIRECT_URL`. Both files are gitignored. The
+`npm run db:*` scripts go through `dotenv -e .env.local` and work either way; it
+is the bare `npx prisma ...` form that needs `.env`.
 
 Generate the two secrets with:
 
