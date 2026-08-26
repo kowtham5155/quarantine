@@ -142,6 +142,104 @@ export default async function HomePage() {
         </p>
       </section>
 
+      <section aria-labelledby="measured" className="space-y-5">
+        <div className="max-w-3xl space-y-2">
+          <h2 id="measured" className="text-2xl font-semibold tracking-tight">
+            What measuring it changed
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            A scanner that cries wolf gets switched off in week two, so the rules were measured
+            against real published code rather than against intuition. Four defects that found, each
+            one a false positive on an ordinary package.
+          </p>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-base">
+                <span className="font-mono text-sm">Q-CAP-001</span> fired on{' '}
+                <span className="font-mono text-sm">regex.exec()</span>
+              </CardTitle>
+              <CardDescription>
+                The rule that reports a package reaching for process execution matched any member
+                call ending in <span className="font-mono text-xs">.exec</span> — which is
+                <span className="font-mono text-xs"> RegExp.prototype.exec</span>, one of the most
+                common calls in JavaScript. Ground truth was computed by an independent AST walk
+                over 570 installed packages.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <dl className="flex flex-wrap gap-x-10 gap-y-3">
+                <div>
+                  <dt className="text-xs tracking-wide text-muted-foreground uppercase">
+                    Precision before
+                  </dt>
+                  <dd className="font-mono text-2xl text-verdict-suspicious-accent tabular-nums">
+                    0.312
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs tracking-wide text-muted-foreground uppercase">
+                    Precision after
+                  </dt>
+                  <dd className="font-mono text-2xl text-verdict-clean-accent tabular-nums">
+                    1.000
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs tracking-wide text-muted-foreground uppercase">
+                    Recall lost
+                  </dt>
+                  <dd className="font-mono text-2xl tabular-nums">none</dd>
+                </div>
+                <div>
+                  <dt className="text-xs tracking-wide text-muted-foreground uppercase">
+                    False positives removed
+                  </dt>
+                  <dd className="font-mono text-2xl tabular-nums">60</dd>
+                </div>
+              </dl>
+              <p className="mt-4 text-xs text-muted-foreground">
+                69% of that rule&rsquo;s firings were regex matches in{' '}
+                <span className="font-mono">picomatch</span>,{' '}
+                <span className="font-mono">semver</span>, <span className="font-mono">chalk</span>,{' '}
+                <span className="font-mono">eslint</span>, <span className="font-mono">acorn</span>{' '}
+                and 55 others. It feeds a hard trigger, so each one was a false &ldquo;do not
+                install&rdquo;.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Every built package looked malicious</CardTitle>
+              <CardDescription>
+                The rule that catches the <span className="font-mono text-xs">event-stream</span>{' '}
+                signature — runnable files in the tarball that the repository does not have — is
+                also what a normal build looks like.{' '}
+                <span className="font-mono text-xs">lodash</span> scored likely-malicious; so did{' '}
+                <span className="font-mono text-xs">esbuild</span> after the first attempt at a fix.
+                It now asks whether the repository builds anything before drawing that conclusion.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">The SSRF guard was too blunt</CardTitle>
+              <CardDescription>
+                Blanket-blocking the NAT64 prefix made GitHub unreachable on any DNS64 network, so
+                every provenance check silently returned{' '}
+                <span className="font-mono text-xs">PARTIAL</span>. The guard now decodes the IPv4
+                address carried inside such an address and applies the ordinary rules — which is
+                stricter, not looser, than what it replaced.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+      </section>
+
       <section aria-labelledby="verdicts" className="space-y-5">
         <div className="max-w-3xl space-y-2">
           <h2 id="verdicts" className="text-2xl font-semibold tracking-tight">
