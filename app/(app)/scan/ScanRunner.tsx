@@ -156,14 +156,27 @@ export function ScanRunner({ scans, navigateOnComplete = false }: ScanRunnerProp
       }
 
       if (!response.ok || !response.body) {
-        update(scan.analysisId, (previous) => ({
-          ...previous,
-          phase: 'failed',
-          error:
-            response.status === 429
-              ? 'Scan rate limit reached. Try again shortly.'
-              : 'The scan could not be started.',
-        }));
+        // The route answers with a public error body whose message its author
+        // marked safe to show. Replacing it with a generic line throws away the
+        // only thing that explains the failure — an analysis already running, a
+        // rejected origin, a row that belongs to another org — and leaves the
+        // user with nothing to act on.
+        let error = 'The scan could not be started.';
+
+        if (response.status === 429) {
+          error = 'Scan rate limit reached. Try again shortly.';
+        } else {
+          try {
+            const body = (await response.json()) as { error?: { message?: unknown } };
+            if (typeof body.error?.message === 'string' && body.error.message.length > 0) {
+              error = body.error.message;
+            }
+          } catch {
+            // Not our JSON — a proxy error page, say. Keep the generic line.
+          }
+        }
+
+        update(scan.analysisId, (previous) => ({ ...previous, phase: 'failed', error }));
         return;
       }
 

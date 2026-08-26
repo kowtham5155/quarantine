@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useTheme } from 'next-themes';
-import { LogOut, Menu, Moon, Radar, Search, Settings, Sun, User } from 'lucide-react';
+import { LogOut, Menu, Moon, Radar, Search, Sun } from 'lucide-react';
 
 import { Sidebar } from '@/components/shared/Sidebar';
 import { Button } from '@/components/ui/button';
@@ -140,21 +140,15 @@ export function TopBar({ user, onOpenSearch, className }: TopBarProps) {
                 ) : null}
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              {/* Profile and Settings items lived here pointing at /settings and
+                  /settings/profile. Neither route exists, so both were a 404 on
+                  click; they belong back here once there is a settings area to
+                  point at. Sign out went to /logout, which does not exist
+                  either — the route Auth.js actually serves is
+                  /api/auth/signout, which is what the onboarding and
+                  accept-invite headers already use. */}
               <DropdownMenuItem asChild>
-                <Link href="/settings/profile">
-                  <User aria-hidden="true" />
-                  Profile
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/settings">
-                  <Settings aria-hidden="true" />
-                  Settings
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/logout">
+                <Link href="/api/auth/signout">
                   <LogOut aria-hidden="true" />
                   Sign out
                 </Link>
