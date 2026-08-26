@@ -1,4 +1,13 @@
-import { collectCalls, collectImports, collectMemberExpressions, collectStrings } from '@/lib/engine/ast';
+import type { Node } from '@babel/types';
+
+import {
+  calleeText,
+  collectCalls,
+  collectImports,
+  collectMemberExpressions,
+  collectStrings,
+  excerptAt,
+} from '@/lib/engine/ast';
 import {
   CONTEXT_FRAMEWORK_DEPENDENTS,
   type ContextBucket,
@@ -22,6 +31,61 @@ import {
  * to decide how much each hit is worth — see `deriveContextBucket` below and
  * `CONTEXT_MODIFIERS` in thresholds.ts.
  */
+
+/** Calls that read a whole object at once, the shape env exfiltration takes. */
+const ENUMERATING_CALLEES = new Set([
+  'Object.keys',
+  'Object.entries',
+  'Object.values',
+  'Object.assign',
+  'JSON.stringify',
+]);
+
+/** `process.env`, however it is spelled at this position. */
+function isEnvironmentNode(node: Node | null | undefined): boolean {
+  if (!node) return false;
+  if (node.type === 'SpreadElement') return isEnvironmentNode(node.argument as Node);
+  return calleeText(node) === 'process.env';
+}
+
+/** Does this call read `process.env` itself, rather than merely sit near one? */
+function readsEnvironment(node: Node): boolean {
+  const args =
+    node.type === 'CallExpression' || node.type === 'NewExpression'
+      ? ((node.arguments ?? []) as Node[])
+      : [];
+
+  for (const argument of args) {
+    if (isEnvironmentNode(argument)) return true;
+
+    // `Object.assign({}, process.env)` and `JSON.stringify({ ...process.env })`
+    // wrap it one level down, which is the same read with more syntax.
+    if (argument.type === 'ObjectExpression') {
+      for (const property of argument.properties as Node[]) {
+        if (isEnvironmentNode(property)) return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * A member call that is really `child_process`, reached without an import.
+ *
+ * `.exec` alone is not enough: `RegExp.prototype.exec` and `String.prototype`
+ * matchers share the name, and lodash's `separator.exec(string)` was being
+ * reported as process execution. The unambiguous names still fire on their own;
+ * bare `exec` has to be hanging off something that names the module.
+ */
+function isProcessExecMember(text: string): boolean {
+  if (/\.(?:execSync|spawnSync|spawn|execFile|execFileSync)$/.test(text)) return true;
+  if (/\.fork$/.test(text)) return /child_?process|^cp\.|^proc\./i.test(text);
+  if (!/\.exec$/.test(text)) return false;
+
+  const receiver = text.slice(0, -'.exec'.length);
+  return /(?:^|\.)(?:child_process|childProcess|cp|proc|process)$/i.test(receiver);
+}
 
 export const CAPABILITY_RULES = [
   'Q-CAP-001',
@@ -272,20 +336,18 @@ export async function analyseCapability(context: AnalysisContext): Promise<Famil
       // environment is the exfiltration shape: CI secrets, tokens, everything.
       if (parsed.parsed) {
         for (const call of collectCalls(parsed)) {
-          const enumerating =
-            (call.callee === 'Object.keys' ||
-              call.callee === 'Object.entries' ||
-              call.callee === 'Object.values' ||
-              call.callee === 'Object.assign' ||
-              call.callee === 'JSON.stringify') &&
-            /process\.env/.test(text);
+          if (!ENUMERATING_CALLEES.has(call.callee)) continue;
 
-          if (!enumerating) continue;
+          // The environment has to be what this call is actually reading.
+          // Testing the whole file for `process.env` fires on every
+          // `JSON.stringify` in any file that mentions the environment once —
+          // esbuild's install.js took eleven CRITICAL hits that way, none of
+          // them touching the environment at all.
+          if (!readsEnvironment(call.node)) continue;
 
-          const index = text.indexOf('process.env');
           mark('Q-CAP-004');
           builder.fire('Q-CAP-004', confidenceForSource(source, 0.8), [
-            evidence(file.path, call.line, excerptAround(text, Math.max(0, index)), {
+            evidence(file.path, call.line, excerptAt(text, call.line), {
               pattern: call.callee,
             }),
           ]);
@@ -375,9 +437,7 @@ export async function analyseCapability(context: AnalysisContext): Promise<Famil
       // a re-export, or reached through a global.
       if (parsed.parsed) {
         for (const member of collectMemberExpressions(parsed)) {
-          if (!/\.(?:execSync|exec|spawnSync|spawn|fork|execFile|execFileSync)$/.test(member.text)) {
-            continue;
-          }
+          if (!isProcessExecMember(member.text)) continue;
           if (fired.has('Q-CAP-001')) break;
 
           mark('Q-CAP-001');
