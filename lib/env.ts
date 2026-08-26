@@ -74,6 +74,50 @@ export const envSchema = z.object({
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional(),
 });
 
+/** A Neon pooled endpoint, or anything else fronted by PgBouncer. */
+function isPooled(url: string): boolean {
+  return /-pooler\./.test(url) || /[?&]pgbouncer=true/.test(url);
+}
+
+/**
+ * A pooled DATABASE_URL obliges a direct DIRECT_URL.
+ *
+ * Prisma does not error when `directUrl` resolves to nothing — it silently
+ * falls back to `url`. Migrating through PgBouncer then appears to work while
+ * leaving `pg_advisory_lock` held on a pooled backend that is handed straight
+ * back to the app and never releases it. Every later `migrate deploy` fails
+ * with P1002 against a lock nothing will ever free, and the message points at
+ * the database rather than the missing variable that caused it.
+ *
+ * Failing at boot with the variable's name is worth far more than a deploy that
+ * breaks an hour later for reasons that read like an outage.
+ */
+export const envSchemaChecked = envSchema.superRefine((value, ctx) => {
+  if (!isPooled(value.DATABASE_URL)) return;
+
+  if (!value.DIRECT_URL) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['DIRECT_URL'],
+      message:
+        'DATABASE_URL is a pooled (PgBouncer) endpoint, so DIRECT_URL is required — ' +
+        'the same connection string with "-pooler" removed from the host. Without it ' +
+        'Prisma migrates through the pooler and leaks the migration advisory lock.',
+    });
+    return;
+  }
+
+  if (isPooled(value.DIRECT_URL)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['DIRECT_URL'],
+      message:
+        'DIRECT_URL is also pooled. It must be the unpooled endpoint — the same ' +
+        'connection string with "-pooler" removed from the host.',
+    });
+  }
+});
+
 export type Env = z.infer<typeof envSchema>;
 
 function formatIssues(issues: z.ZodIssue[]): string {
@@ -87,7 +131,7 @@ function parseEnv(): Env {
     return process.env as unknown as Env;
   }
 
-  const result = envSchema.safeParse(process.env);
+  const result = envSchemaChecked.safeParse(process.env);
 
   if (!result.success) {
     // Thrown before the server accepts a connection. Names only — never values.
